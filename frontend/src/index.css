@@ -1655,3 +1655,73 @@ button.summary-card:focus-visible {
   text-decoration: underline;
   overflow-wrap: anywhere;
 }
+
+.reports-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.reports-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 20px;
+}
+
+.reports-filters .session-field {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reports-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.reports-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 14px;
+}
+
+.reports-caption {
+  padding: 12px 20px;
+  text-align: left;
+  color: #52677a;
+}
+
+.reports-table th {
+  padding: 14px 16px;
+  background: #edf5fc;
+  color: #21496c;
+  border-bottom: 2px solid #d4e4f2;
+  white-space: nowrap;
+}
+
+.reports-table td {
+  padding: 16px;
+  border-bottom: 1px solid #e4ebf2;
+  vertical-align: top;
+  min-width: 115px;
+}
+
+.reports-table td:first-child {
+  min-width: 240px;
+}
+
+.reports-table tbody tr:hover {
+  background: #f5f9fd;
+}
+
+.report-detail {
+  display: block;
+  margin-top: 6px;
+  color: #52677a;
+  font-size: 12px;
+}

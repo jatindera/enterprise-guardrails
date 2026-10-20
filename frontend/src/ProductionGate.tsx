@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { gateIsCurrent, reviewSignature } from "./projectWorkflow";
+import { useProjectUpdate } from "./ProjectUpdates";
+import { useEffect, useState } from "react";
 
 import {
   Badge,
@@ -72,7 +74,7 @@ function determineScope(project: Project): GateScope {
     return {
       label: "Awaiting classification",
       reason:
-        "EA complexity and applicable Security and RAI risk ratings must be available before determining the review scope.",
+        "All applicable classifications are Low. The suggested scope is Exempt; reviewers may record any decision.",
       applicable: true,
       assessed: false,
     };
@@ -141,6 +143,7 @@ function determineScope(project: Project): GateScope {
 export default function ProductionGate({
   project,
 }: ProductionGateProps) {
+  const updateProject = useProjectUpdate(project.demandId);
   const scope = determineScope(project);
   const raiApplicable = project.raiStatus !== "Not applicable";
 
@@ -161,6 +164,11 @@ export default function ProductionGate({
   const [message, setMessage] = useState("");
 
   const latestRecord = records[records.length - 1];
+  const currentReviewSignature = reviewSignature(project);
+
+  useEffect(() => {
+    setJointConfirmed(false);
+  }, [currentReviewSignature]);
 
   function markChanged() {
     setJointConfirmed(false);
@@ -185,8 +193,7 @@ export default function ProductionGate({
     setJointConfirmed(false);
     setError("");
     setMessage(
-      `${files.length} supporting document${
-        files.length === 1 ? "" : "s"
+      `${files.length} supporting document${files.length === 1 ? "" : "s"
       } added.`,
     );
   }
@@ -209,29 +216,8 @@ export default function ProductionGate({
     setError("");
     setMessage("");
 
-    if (!scope.assessed) {
-      setError(
-        "Complete EA complexity and applicable Security and RAI risk ratings before recording a gate decision.",
-      );
-      return;
-    }
-
     if (!decision) {
       setError("Select a decision.");
-      return;
-    }
-
-    if (decision === "Not applicable" && scope.applicable) {
-      setError(
-        "Not applicable is available only when the calculated review scope is Exempt.",
-      );
-      return;
-    }
-
-    if (!scope.applicable && decision !== "Not applicable") {
-      setError(
-        "This project is exempt. Select Not applicable and record the reason.",
-      );
       return;
     }
 
@@ -289,6 +275,12 @@ export default function ProductionGate({
       })),
     };
 
+    updateProject({
+      gateDecision: decision,
+      gateScope: scope.label,
+      gateRecordedAt: record.recordedAt,
+      gateReviewSignature: reviewSignature(project),
+    });
     setRecords((current) => [...current, record]);
     setMessage(
       "Decision recorded in this workspace. Backend persistence is pending.",
@@ -309,7 +301,9 @@ export default function ProductionGate({
         </div>
 
         <Badge appearance="tint" color="brand">
-          {latestRecord?.decision ?? "Not recorded"}
+          {project.gateRecordedAt && !gateIsCurrent(project)
+            ? "Review changed — re-record decision"
+            : latestRecord?.decision ?? project.gateDecision ?? "Not recorded"}
         </Badge>
       </div>
 

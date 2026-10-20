@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useProjectUpdate } from "./ProjectUpdates";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Badge,
@@ -60,6 +61,7 @@ interface DecisionRecord {
 export default function SecurityRecord({
   project,
 }: SecurityRecordProps) {
+  const updateProject = useProjectUpdate(project.demandId);
   const reportInput = useRef<HTMLInputElement>(null);
   const emailInput = useRef<HTMLInputElement>(null);
 
@@ -88,6 +90,11 @@ export default function SecurityRecord({
   ).length;
 
   const latestDecision = records[records.length - 1];
+
+  useEffect(() => {
+    if (conditions.length === 0) return;
+    updateProject({ securityConditions: conditions.map(({ id, status, dueDate }) => ({ id, status, dueDate })) });
+  }, [conditions, updateProject]);
 
   function attachFile(
     file: File | undefined,
@@ -255,6 +262,11 @@ export default function SecurityRecord({
       return;
     }
 
+    updateProject({
+      securityStatus: decision === "Conditional approval" ? "Conditional" : decision,
+      securityRisk: risk,
+      securityConditions: conditions.map(({ id, status, dueDate }) => ({ id, status, dueDate })),
+    });
     setRecords((current) => [
       ...current,
       {
@@ -296,8 +308,8 @@ export default function SecurityRecord({
         <MessageBarBody>
           Security’s existing application remains the official system.
           Store copies of its evidence and decisions here. Files and
-          records are local and clear when the workspace is unmounted
-          or the page is refreshed. Permissions are not enforced yet.
+          records are held in memory and clear
+          when the page is refreshed. Permissions are not enforced yet.
         </MessageBarBody>
       </MessageBar>
 

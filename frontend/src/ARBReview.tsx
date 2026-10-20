@@ -1,3 +1,4 @@
+import { useProjectUpdate } from "./ProjectUpdates";
 import { useState } from "react";
 
 import {
@@ -78,6 +79,7 @@ const documentGroups: {
   ];
 
 export default function ARBReview({ project }: ARBReviewProps) {
+  const updateProject = useProjectUpdate(project.demandId);
   const [artifacts, setArtifacts] = useState<ARBArtifact[]>([]);
   const [meetingDate, setMeetingDate] = useState("");
   const [meetingHeld, setMeetingHeld] = useState(false);
@@ -200,7 +202,7 @@ export default function ARBReview({ project }: ARBReviewProps) {
 
     const outcome: ARBRecord["outcome"] = returnedForReview
       ? "Returned for review"
-      : meetingHeld && votePassed && eaApprovalConfirmed
+      : meetingHeld && votePassed && eaApprovalConfirmed && project.eaStatus === "Approved"
         ? "Completed"
         : "Pending";
 
@@ -228,6 +230,10 @@ export default function ARBReview({ project }: ARBReviewProps) {
       })),
     };
 
+    updateProject({
+      arbStatus: outcome === "Pending" ? "In progress" : outcome,
+      arbCompletionDate: outcome === "Completed" ? meetingDate : undefined,
+    });
     setRecords((current) => [...current, record]);
     setMessage(`ARB record saved locally: ${outcome}.`);
   }
@@ -260,9 +266,9 @@ export default function ARBReview({ project }: ARBReviewProps) {
 
       <MessageBar intent="info">
         <MessageBarBody>
-          Local prototype. Files, votes, and records clear on refresh
-          or when leaving the project. Reviewer permissions, ADR
-          generation, and portfolio updates await backend integration.
+          Local prototype. Files, votes, and records are retained during
+          this app session and clear on refresh. Reviewer permissions, ADR
+          generation, and backend persistence await integration.
         </MessageBarBody>
       </MessageBar>
 

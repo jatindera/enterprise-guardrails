@@ -1,3 +1,4 @@
+import { useProjectUpdate } from "./ProjectUpdates";
 import { useState } from "react";
 
 import {
@@ -48,6 +49,7 @@ export default function EAApprovalReport({
   items,
   currentDiagram,
 }: EAApprovalReportProps) {
+  const updateProject = useProjectUpdate(project.demandId);
   const [summary, setSummary] = useState("");
   const [complexity, setComplexity] =
     useState<EAComplexity | "">(
@@ -108,6 +110,7 @@ export default function EAApprovalReport({
       diagram: currentDiagram ? { ...currentDiagram } : null,
     };
 
+    updateProject({ eaStatus: decision, eaComplexity: complexity });
     setReports((current) => [...current, report]);
     setError("");
   }
@@ -190,10 +193,10 @@ export default function EAApprovalReport({
       <div className="workspace-panel-body">
         <MessageBar intent="info">
           <MessageBarBody>
-            Save a local report snapshot for review. This does not
-            update Intake, authenticate the approver, or change
-            portfolio status. Refreshing or leaving the project
-            clears these records.
+            Save a report snapshot and update the frontend portfolio.
+            This does not update Intake or authenticate the approver.
+            Records remain available during this app session and clear
+            on refresh.
           </MessageBarBody>
         </MessageBar>
 

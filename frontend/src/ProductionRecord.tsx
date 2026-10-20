@@ -1,3 +1,5 @@
+import { deploymentBlocker } from "./projectWorkflow";
+import { useProjectUpdate } from "./ProjectUpdates";
 import { useState } from "react";
 
 import {
@@ -43,21 +45,22 @@ function isValidWebUrl(value: string) {
 export default function ProductionRecord({
   project,
 }: ProductionRecordProps) {
+  const updateProject = useProjectUpdate(project.demandId);
   const [productionStatus, setProductionStatus] =
     useState<ProductionStatus>(
-      project.stage === "Production"
+      project.productionStatus === "In production" || project.stage === "Production"
         ? "In production"
         : "Not deployed",
     );
 
-  const [goLiveDate, setGoLiveDate] = useState("");
+  const [goLiveDate, setGoLiveDate] = useState(project.goLiveDate ?? "");
 
   const [leanixStatus, setLeanIXStatus] =
-    useState<LeanIXStatus>("Not planned");
+    useState<LeanIXStatus>(project.leanixStatus ?? "Not planned");
 
-  const [leanixId, setLeanIXId] = useState("");
-  const [leanixUrl, setLeanIXUrl] = useState("");
-  const [comments, setComments] = useState("");
+  const [leanixId, setLeanIXId] = useState(project.leanixId ?? "");
+  const [leanixUrl, setLeanIXUrl] = useState(project.leanixUrl ?? "");
+  const [comments, setComments] = useState(project.productionComments ?? "");
 
   const [savedRecord, setSavedRecord] =
     useState<ProductionRecordData | null>(null);
@@ -82,6 +85,11 @@ export default function ProductionRecord({
     setMessage("");
 
     if (productionStatus === "In production") {
+      const blocker = deploymentBlocker(project);
+      if (blocker) {
+        setError(blocker);
+        return;
+      }
       if (!goLiveDate) {
         setError("Enter the actual go-live date.");
         return;
@@ -127,6 +135,15 @@ export default function ProductionRecord({
       savedAt: new Date().toISOString(),
     };
 
+    updateProject({
+      productionStatus: record.productionStatus,
+      goLiveDate: record.goLiveDate,
+      leanixStatus: record.leanixStatus,
+      leanixId: record.leanixId,
+      leanixUrl: record.leanixUrl,
+      productionComments: record.comments,
+      productionSavedAt: record.savedAt,
+    });
     setSavedRecord(record);
     setMessage("Production and LeanIX details saved in this workspace.");
   }
@@ -153,8 +170,7 @@ export default function ProductionRecord({
         <MessageBarBody>
           Record the actual deployment and optional LeanIX registration.
           Saving here records information; it does not deploy the
-          application or submit it to LeanIX. Backend persistence and
-          gate validation are pending.
+          application or submit it to LeanIX. Frontend gate validation is connected; backend persistence is pending.
         </MessageBarBody>
       </MessageBar>
 
@@ -293,8 +309,7 @@ export default function ProductionRecord({
 
       <p className="workspace-secondary">
         These details remain available while this project workspace
-        stays mounted. Refreshing or leaving the project may clear
-        them until backend storage is connected.
+        stays mounted. Refreshing clears them until backend storage is connected.
       </p>
     </section>
   );

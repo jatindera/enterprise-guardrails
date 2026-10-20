@@ -1,5 +1,9 @@
-import { useState } from "react";
+import { ProjectUpdateContext } from "./ProjectUpdates";
+import type { ProjectPatch } from "./ProjectUpdates";
+import { deriveStage, overdueConditionCount } from "./projectWorkflow";
+import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
+import Reports from "./Reports";
 
 import {
   Button,
@@ -67,6 +71,31 @@ function App() {
 
   const [selectedDemandId, setSelectedDemandId] =
     useState<string | null>(null);
+
+  const [openedDemandIds, setOpenedDemandIds] = useState<string[]>([]);
+
+  const updateProject = useCallback((demandId: string, patch: ProjectPatch) => {
+    setProjects((current) => current.map((project) => {
+      if (project.demandId !== demandId) return project;
+      const updated = { ...project, ...patch };
+      if (updated.eaStatus !== "Approved" && updated.arbStatus === "Completed") {
+        updated.arbStatus = "In progress";
+        updated.arbCompletionDate = undefined;
+      }
+      updated.stage = deriveStage(updated);
+      if (patch.securityConditions !== undefined || patch.raiConditions !== undefined) {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        updated.overdueActions = overdueConditionCount(updated, today);
+      }
+      return updated;
+    }));
+  }, []);
+
+  function openProject(demandId: string) {
+    setOpenedDemandIds((current) => current.includes(demandId) ? current : [...current, demandId]);
+    setSelectedDemandId(demandId);
+  }
 
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [importMessage, setImportMessage] = useState("");
@@ -183,214 +212,230 @@ function App() {
   }
 
   return (
-    <div className="application">
-      <header className="application-header">
-        <div className="brand">
-        <div className="header-logo-container">
-  <img
-    src="/DuPont_Logo.png"
-    alt="DuPont"
-    className="header-logo"
-  />
-</div>
+    <ProjectUpdateContext.Provider value={updateProject}>
+      <div className="application">
+        <header className="application-header">
+          <div className="brand">
+            <div className="header-logo-container">
+              <img
+                src="/DuPont_Logo.png"
+                alt="DuPont"
+                className="header-logo"
+              />
+            </div>
 
-          <span className="brand-divider" aria-hidden="true" />
+            <span className="brand-divider" aria-hidden="true" />
 
-          <span className="application-name">
-            Enterprise Guardrail
-          </span>
-        </div>
-
-        <div className="user-profile">
-          <span className="environment-label">
-            LOCAL DEVELOPMENT
-          </span>
-
-          <div className="user-description">
-            <strong>Jatinder Arora</strong>
-            <span>Enterprise Architect · Demo identity</span>
+            <span className="application-name">
+              Enterprise Guardrail
+            </span>
           </div>
 
-          <div className="user-avatar" aria-hidden="true">
-            JA
+          <div className="user-profile">
+            <span className="environment-label">
+              LOCAL DEVELOPMENT
+            </span>
+
+            <div className="user-description">
+              <strong>Jatinder Arora</strong>
+              <span>Enterprise Architect · Demo identity</span>
+            </div>
+
+            <div className="user-avatar" aria-hidden="true">
+              JA
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="application-layout">
-        <aside className="sidebar">
-          <div className="navigation-label">WORKSPACE</div>
+        <div className="application-layout">
+          <aside className="sidebar">
+            <div className="navigation-label">WORKSPACE</div>
 
-          <nav aria-label="Main navigation">
-            {navigation.map((item) => (
-              <Button
-                key={item.name}
-                appearance="subtle"
-                icon={item.icon}
-                className={`navigation-button ${activePage === item.name ? "is-active" : ""
-                  }`}
-                aria-current={
-                  activePage === item.name ? "page" : undefined
-                }
-                onClick={() => setActivePage(item.name)}
-              >
-                {item.name}
-              </Button>
-            ))}
-          </nav>
-
-          <div className="sidebar-note">
-            <strong>Shared visibility</strong>
-            <p>
-              All application users can view every project.
-              Roles control editing and approval actions.
-            </p>
-          </div>
-        </aside>
-
-        <main className="main-content">
-          <div className="breadcrumb">
-            Workspace / {activePage}
-            {activePage === "Portfolio" && selectedProject
-              ? ` / Demand #${selectedProject.demandId}`
-              : ""}
-          </div>
-
-          {activePage === "Portfolio" ? (
-            <>
-              {selectedProject && (
-                <ProjectWorkspace
-                  key={selectedProject.demandId}
-                  project={selectedProject}
-                  onBack={() => setSelectedDemandId(null)}
-                />
-              )}
-
-              <div hidden={Boolean(selectedProject)}>
-                <div className="page-heading">
-                  <div>
-                    <h1>Project portfolio</h1>
-                    <p>
-                      One place for reviews, decisions, and the
-                      evidence behind them.
-                    </p>
-                  </div>
-
-                  <Button
-                    appearance="primary"
-                    icon={<ArrowUploadRegular />}
-                    onClick={() => setIntakeOpen(true)}
-                  >
-                    Import intake
-                  </Button>
-                </div>
-
-                {importMessage && (
-                  <div className="intake-notice">
-                    <MessageBar intent="success">
-                      <MessageBarBody>
-                        {importMessage}
-                      </MessageBarBody>
-                    </MessageBar>
-                  </div>
-                )}
-
-                <section
-                  className="summary-grid"
-                  aria-label="Sample portfolio summary"
-                >
-                  {summaries.map((summary) => (
-                    <button
-                      key={summary.filter}
-                      type="button"
-                      className={`summary-card tone-${summary.tone}`}
-                      aria-pressed={
-                        portfolioFilter === summary.filter
-                      }
-                      onClick={() =>
-                        setPortfolioFilter((current) =>
-                          current === summary.filter
-                            ? "all"
-                            : summary.filter,
-                        )
-                      }
-                    >
-                      <span className="summary-label">
-                        {summary.label}
-                      </span>
-
-                      <strong className="summary-value">
-                        {summary.value}
-                      </strong>
-
-                      <span className="summary-description">
-                        {summary.description}
-                      </span>
-                    </button>
-                  ))}
-                </section>
-
-                <ProjectRegister
-                  projects={projects}
-                  portfolioFilter={portfolioFilter}
-                  onClearPortfolioFilter={() =>
-                    setPortfolioFilter("all")
+            <nav aria-label="Main navigation">
+              {navigation.map((item) => (
+                <Button
+                  key={item.name}
+                  appearance="subtle"
+                  icon={item.icon}
+                  className={`navigation-button ${activePage === item.name ? "is-active" : ""
+                    }`}
+                  aria-current={
+                    activePage === item.name ? "page" : undefined
                   }
-                  onSelectProject={setSelectedDemandId}
-                />
-              </div>
-            </>
-          ) : (
+                  onClick={() => setActivePage(item.name)}
+                >
+                  {item.name}
+                </Button>
+              ))}
+            </nav>
+
+            <div className="sidebar-note">
+              <strong>Shared visibility</strong>
+              <p>
+                All application users can view every project.
+                Roles control editing and approval actions.
+              </p>
+            </div>
+          </aside>
+
+          <main className="main-content">
+            <div className="breadcrumb">
+              Workspace / {activePage}
+              {activePage === "Portfolio" && selectedProject
+                ? ` / Demand #${selectedProject.demandId}`
+                : ""}
+            </div>
+
             <>
-              <div className="page-heading">
-                <div>
-                  <h1>{activePage}</h1>
-                  <p>
-                    This workspace will be implemented in a
-                    later step.
-                  </p>
+              <div hidden={activePage !== "Portfolio"}>
+                {openedDemandIds.map((demandId) => {
+                  const project = projects.find((item) => item.demandId === demandId);
+                  return project ? (
+                    <div key={demandId} hidden={selectedDemandId !== demandId}>
+                      <ProjectWorkspace
+                        project={project}
+                        onBack={() => setSelectedDemandId(null)}
+                      />
+                    </div>
+                  ) : null;
+                })}
+
+                <div hidden={Boolean(selectedProject)}>
+                  <div className="page-heading">
+                    <div>
+                      <h1>Project portfolio</h1>
+                      <p>
+                        One place for reviews, decisions, and the
+                        evidence behind them.
+                      </p>
+                    </div>
+
+                    <Button
+                      appearance="primary"
+                      icon={<ArrowUploadRegular />}
+                      onClick={() => setIntakeOpen(true)}
+                    >
+                      Import intake
+                    </Button>
+                  </div>
+
+                  {importMessage && (
+                    <div className="intake-notice">
+                      <MessageBar intent="success">
+                        <MessageBarBody>
+                          {importMessage}
+                        </MessageBarBody>
+                      </MessageBar>
+                    </div>
+                  )}
+
+                  <section
+                    className="summary-grid"
+                    aria-label="Sample portfolio summary"
+                  >
+                    {summaries.map((summary) => (
+                      <button
+                        key={summary.filter}
+                        type="button"
+                        className={`summary-card tone-${summary.tone}`}
+                        aria-pressed={
+                          portfolioFilter === summary.filter
+                        }
+                        onClick={() =>
+                          setPortfolioFilter((current) =>
+                            current === summary.filter
+                              ? "all"
+                              : summary.filter,
+                          )
+                        }
+                      >
+                        <span className="summary-label">
+                          {summary.label}
+                        </span>
+
+                        <strong className="summary-value">
+                          {summary.value}
+                        </strong>
+
+                        <span className="summary-description">
+                          {summary.description}
+                        </span>
+                      </button>
+                    ))}
+                  </section>
+
+                  <ProjectRegister
+                    projects={projects}
+                    portfolioFilter={portfolioFilter}
+                    onClearPortfolioFilter={() =>
+                      setPortfolioFilter("all")
+                    }
+                    onSelectProject={openProject}
+                  />
                 </div>
               </div>
-
-              <section className="content-panel">
-                <div className="empty-state">
-                  <h2>{activePage}</h2>
-
-                  <p>
-                    Navigation is ready. This section is awaiting
-                    implementation.
-                  </p>
-
-                  <Button
-                    appearance="primary"
-                    onClick={() => setActivePage("Portfolio")}
-                  >
-                    Back to portfolio
-                  </Button>
-                </div>
-              </section>
-            </>
-          )}
-
-          <footer className="page-footer">
-            Development preview · Sample project data and
-            in-memory imports. Authentication and backend
-            services are not connected.
-          </footer>
-
-          {intakeOpen && (
-            <IntakeImport
-              open={intakeOpen}
-              existingDemandIds={projects.map(
-                (project) => project.demandId,
+              {activePage === "Reports" && (
+                <Reports
+                  projects={projects}
+                  onOpenProject={(demandId) => {
+                    openProject(demandId);
+                    setActivePage("Portfolio");
+                  }}
+                />
               )}
-              onClose={() => setIntakeOpen(false)}
-              onImport={handleIntakeImport}
-            />
-          )}
-        </main>
+              {activePage !== "Portfolio" && activePage !== "Reports" && (
+                <>
+                  <div className="page-heading">
+                    <div>
+                      <h1>{activePage}</h1>
+                      <p>
+                        This workspace will be implemented in a
+                        later step.
+                      </p>
+                    </div>
+                  </div>
+
+                  <section className="content-panel">
+                    <div className="empty-state">
+                      <h2>{activePage}</h2>
+
+                      <p>
+                        Navigation is ready. This section is awaiting
+                        implementation.
+                      </p>
+
+                      <Button
+                        appearance="primary"
+                        onClick={() => setActivePage("Portfolio")}
+                      >
+                        Back to portfolio
+                      </Button>
+                    </div>
+                  </section>
+                </>
+              )}
+            </>
+
+            <footer className="page-footer">
+              Development preview · Sample project data and
+              in-memory imports. Authentication and backend
+              services are not connected.
+            </footer>
+
+            {intakeOpen && (
+              <IntakeImport
+                open={intakeOpen}
+                existingDemandIds={projects.map(
+                  (project) => project.demandId,
+                )}
+                onClose={() => setIntakeOpen(false)}
+                onImport={handleIntakeImport}
+              />
+            )}
+          </main>
+        </div>
       </div>
-    </div>
+    </ProjectUpdateContext.Provider>
   );
 }
 

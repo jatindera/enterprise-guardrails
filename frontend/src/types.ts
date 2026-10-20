@@ -3,7 +3,9 @@ export type ReviewStatus =
   | "In progress"
   | "Approved"
   | "Conditional"
-  | "Not applicable";
+  | "Not applicable"
+  | "On hold"
+  | "Rejected";
 
 export type Rating = "Low" | "Medium" | "High" | "Not assessed";
 
@@ -28,6 +30,19 @@ export interface Project {
     | "Returned for review"
     | "Completed";
   arbCompletionDate?: string;
+  gateDecision?: "Approved" | "Conditional approval" | "On hold" | "Rejected" | "Not applicable";
+  gateScope?: string;
+  gateRecordedAt?: string;
+  gateReviewSignature?: string;
+  productionStatus?: "Not deployed" | "In production";
+  goLiveDate?: string;
+  leanixStatus?: "Not planned" | "Planned" | "Submitted";
+  leanixId?: string;
+  leanixUrl?: string;
+  productionComments?: string;
+  productionSavedAt?: string;
+  securityConditions?: { id: string; status: "Open" | "Closed"; dueDate: string }[];
+  raiConditions?: { id: string; status: "Open" | "Closed"; dueDate: string }[];
     intakeSource?: {
     fileName: string;
     markdown: string;

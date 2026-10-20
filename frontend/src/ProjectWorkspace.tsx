@@ -1,3 +1,4 @@
+import { gateIsCurrent } from "./projectWorkflow";
 import { useState } from "react";
 
 import {
@@ -220,7 +221,9 @@ function ProjectWorkspaceContent({
           onClick={() => setSection("Production gate")}
         >
           <strong>Production gate</strong>
-          <span>Review scope shown in section</span>
+          <span>{project.gateRecordedAt && !gateIsCurrent(project)
+              ? "Review changed — recheck"
+              : project.gateDecision ?? "Not recorded"}</span>
         </button>
       </section>
 

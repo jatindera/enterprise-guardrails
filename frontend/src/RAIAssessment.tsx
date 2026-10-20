@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useProjectUpdate } from "./ProjectUpdates";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Badge,
@@ -60,6 +61,7 @@ interface RAISnapshot {
 export default function RAIAssessment({
   project,
 }: RAIAssessmentProps) {
+  const updateProject = useProjectUpdate(project.demandId);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [reviewer, setReviewer] = useState("");
@@ -82,6 +84,11 @@ export default function RAIAssessment({
   const [message, setMessage] = useState("");
 
   const latestDecision = records[records.length - 1];
+
+  useEffect(() => {
+    if (conditions.length === 0) return;
+    updateProject({ raiConditions: conditions.map(({ id, status, dueDate }) => ({ id, status, dueDate })) });
+  }, [conditions, updateProject]);
 
   const openCount = conditions.filter(
     (condition) => condition.status === "Open"
@@ -285,6 +292,11 @@ export default function RAIAssessment({
       })),
     };
 
+    updateProject({
+      raiStatus: decision === "Conditional approval" ? "Conditional" : decision,
+      raiRisk: risk,
+      raiConditions: conditions.map(({ id, status, dueDate }) => ({ id, status, dueDate })),
+    });
     setRecords((current) => [...current, snapshot]);
     setMessage("RAI decision snapshot saved locally.");
   }
@@ -309,7 +321,7 @@ export default function RAIAssessment({
           Use the shared review session for stakeholder discussions.
           This page records the RAI assessment and decision.
           Files and records remain local until backend integration;
-          refreshing or leaving the project clears them.
+          refreshing the page clears them.
           Reviewer permissions are not enforced yet.
         </MessageBarBody>
       </MessageBar>
