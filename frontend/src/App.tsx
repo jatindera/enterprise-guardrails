@@ -186,13 +186,13 @@ function App() {
     <div className="application">
       <header className="application-header">
         <div className="brand">
-          <div
-            className="logo-placeholder"
-            aria-label="Reserved space for the official DuPont logo"
-          >
-            <span>DuPont</span>
-            <small>LOGO SPACE</small>
-          </div>
+        <div className="header-logo-container">
+  <img
+    src="/DuPont_Logo.png"
+    alt="DuPont"
+    className="header-logo"
+  />
+</div>
 
           <span className="brand-divider" aria-hidden="true" />
 

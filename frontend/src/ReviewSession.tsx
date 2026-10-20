@@ -17,7 +17,6 @@ import {
   Textarea,
 } from "@fluentui/react-components";
 
-import MeetingCapture from "./MeetingCapture";
 import TranscriptUpload from "./TranscriptUpload";
 
 import type { CaptureMode } from "./MeetingCapture";
@@ -314,25 +313,35 @@ export default function ReviewSession({
   }
 
   function usePreparedQuestion(question: PreparedQuestion) {
+    const questionText = question.question.trim();
+
     if (
-      askedPreparedQuestionIds.includes(question.id) ||
-      !question.question.trim()
+      !questionText ||
+      askedPreparedQuestionIds.includes(question.id)
     ) {
       return;
     }
 
-    if (answer.trim()) {
-      setError(
-        "Capture or clear the current answer before choosing another question."
-      );
-      return;
-    }
-
-    setCurrentQuestion(question.question.trim());
+    setCurrentQuestion(questionText);
     setActivePreparedQuestionId(question.id);
     setFocus(question.focus);
-    setStatus("Awaiting stakeholder answer");
-    setError("");
+
+    const entry: DiscussionEntry = {
+      id: entries.length + 1,
+      question: questionText,
+      answer: "",
+      speaker: "Not recorded",
+      focus: question.focus,
+      capturedAt: new Date().toISOString(),
+      captureMode: "manual",
+    };
+
+    setEntries((current) => [...current, entry]);
+
+    setAskedPreparedQuestionIds((current) => [
+      ...current,
+      question.id,
+    ]);
   }
 
   function addQuestionFromChat(question: PreparedQuestion) {
@@ -566,15 +575,16 @@ export default function ReviewSession({
             </div>
 
             <div className="workspace-panel-body">
-              <MeetingCapture
-                mode={captureMode}
-                onChange={(mode) => {
-                  setCaptureMode(mode);
-                  setError("");
-                }}
-              />
+              <div className="session-current-question">
+                <span>CURRENT QUESTION</span>
+                <p>
+                  {currentQuestion ||
+                    "Click ‘Use question’ beside a question to begin."}
+                </p>
+              </div>
               <section className="meeting-question-list">
                 <h3>Prepared questions</h3>
+
 
                 <p className="muted-text">
                   Choose a question, ask it, and capture the answer. Captured questions
@@ -653,6 +663,7 @@ export default function ReviewSession({
 
                   return (
                     <div className="meeting-question-row" key={question.id}>
+
                       <div>
                         <Badge appearance="tint">{question.focus}</Badge>
                         <p>{question.question}</p>
@@ -673,63 +684,8 @@ export default function ReviewSession({
                   );
                 })}
               </section>
-              <div className="session-current-question">
-                <span>CURRENT QUESTION</span>
-                <p>
-                  {currentQuestion ||
-                    "Click ‘Use question’ beside a question to begin."}
-                </p>
-              </div>
 
-              <label className="session-field">
-                Respondent / source (optional)
-                <Input
-                  value={speaker}
-                  placeholder="Leave blank, or enter a person or role"
-                  onChange={(_, data) => setSpeaker(data.value)}
-                />
-              </label>
 
-              <label className="session-field">
-                {captureMode === "dictated"
-                  ? "Dictate and check the stakeholder answer summary"
-                  : "Stakeholder’s answer"}
-
-                <Textarea
-                  value={answer}
-                  rows={5}
-                  disabled={liveUnavailable || !currentQuestion.trim()}
-                  placeholder={
-                    captureMode === "dictated"
-                      ? "Click here, press Win + H, and dictate your summary…"
-                      : "Type or paste the answer to the current question…"
-                  }
-                  onChange={(_, data) =>
-                    setAnswer(data.value)
-                  }
-                />
-              </label>
-
-              <Button
-                appearance="primary"
-                disabled={liveUnavailable || !currentQuestion.trim()}
-                onClick={captureAnswer}
-              >
-                Capture & analyze answer
-              </Button>
-
-              <p
-                className="workspace-secondary"
-                role="status"
-              >
-                {status}
-              </p>
-
-              {error && (
-                <p className="session-error" role="alert">
-                  {error}
-                </p>
-              )}
 
               <details className="session-history">
                 <summary>
@@ -756,7 +712,6 @@ export default function ReviewSession({
                         {new Date(
                           entry.capturedAt,
                         ).toLocaleTimeString()}
-                        {" · "}Unconfirmed notes
                       </small>
                     </article>
                   ))
@@ -848,7 +803,6 @@ export default function ReviewSession({
                   Source: {entry.speaker}
                   {" · "}
                   {captureModeLabel(entry.captureMode)}
-                  {" · "}Unconfirmed notes
                 </small>
               </article>
             ))}
