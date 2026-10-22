@@ -4,6 +4,11 @@ import { deriveStage, overdueConditionCount } from "./projectWorkflow";
 import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 import Reports from "./Reports";
+import {
+  MyActions,
+  Knowledge,
+  Administration,
+} from "./SupportingWorkspaces";
 
 import {
   Button,
@@ -83,7 +88,11 @@ function App() {
         updated.arbCompletionDate = undefined;
       }
       updated.stage = deriveStage(updated);
-      if (patch.securityConditions !== undefined || patch.raiConditions !== undefined) {
+      if (
+        patch.eaItems !== undefined ||
+        patch.securityConditions !== undefined ||
+        patch.raiConditions !== undefined
+      ) {
         const now = new Date();
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
         updated.overdueActions = overdueConditionCount(updated, today);
@@ -383,37 +392,23 @@ function App() {
                   }}
                 />
               )}
-              {activePage !== "Portfolio" && activePage !== "Reports" && (
-                <>
-                  <div className="page-heading">
-                    <div>
-                      <h1>{activePage}</h1>
-                      <p>
-                        This workspace will be implemented in a
-                        later step.
-                      </p>
-                    </div>
-                  </div>
+              <div hidden={activePage !== "My actions"}>
+                <MyActions
+                  projects={projects}
+                  onOpenProject={(demandId) => {
+                    openProject(demandId);
+                    setActivePage("Portfolio");
+                  }}
+                />
+              </div>
 
-                  <section className="content-panel">
-                    <div className="empty-state">
-                      <h2>{activePage}</h2>
+              <div hidden={activePage !== "Knowledge"}>
+                <Knowledge />
+              </div>
 
-                      <p>
-                        Navigation is ready. This section is awaiting
-                        implementation.
-                      </p>
-
-                      <Button
-                        appearance="primary"
-                        onClick={() => setActivePage("Portfolio")}
-                      >
-                        Back to portfolio
-                      </Button>
-                    </div>
-                  </section>
-                </>
-              )}
+              <div hidden={activePage !== "Administration"}>
+                <Administration />
+              </div>
             </>
 
             <footer className="page-footer">

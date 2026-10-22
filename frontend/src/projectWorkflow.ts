@@ -101,15 +101,16 @@ export function overdueConditionCount(
   project: Project,
   today: string,
 ): number {
-  const conditions = [
+  const actions = [
+    ...(project.eaItems ?? []),
     ...(project.securityConditions ?? []),
     ...(project.raiConditions ?? []),
   ];
 
-  return conditions.filter(
-    (condition) =>
-      condition.status === "Open" &&
-      Boolean(condition.dueDate) &&
-      condition.dueDate < today,
+  return actions.filter(
+    (action) =>
+      action.status === "Open" &&
+      Boolean(action.dueDate) &&
+      action.dueDate < today,
   ).length;
 }

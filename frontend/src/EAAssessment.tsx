@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useProjectUpdate } from "./ProjectUpdates";
 
 import {
   Badge,
   Button,
+  Input,
   MessageBar,
   MessageBarBody,
   Textarea,
@@ -15,6 +17,7 @@ import type { CurrentDiagramReference } from "./ArchitectureDiagrams";
 
 import type {
   AcceptedMeetingReview,
+  EAAction,
   Project,
 } from "./types";
 
@@ -38,7 +41,24 @@ export default function EAAssessment({
   acceptedReview,
   onOpenReviewSession,
 }: EAAssessmentProps) {
-  const [items, setItems] = useState<EAItem[]>([]);
+  const updateProject = useProjectUpdate(project.demandId);
+
+  const [items, setItems] = useState<EAAction[]>(
+    () => project.eaItems ?? [],
+  );
+
+  const [dueDate, setDueDate] = useState("");
+
+  useEffect(() => {
+    if (items.length === 0) return;
+
+    updateProject({
+      eaItems: items.map((item) => ({
+        ...item,
+        owner: project.assignedEA,
+      })),
+    });
+  }, [items, project.assignedEA, updateProject]);
   const [description, setDescription] = useState("");
   const [message, setMessage] = useState("");
 
@@ -59,17 +79,30 @@ export default function EAAssessment({
       return;
     }
 
-    const item: EAItem = {
+    const item: EAAction = {
       id: crypto.randomUUID(),
       description: text,
       comments: "",
+      owner: project.assignedEA,
+      dueDate,
       status: "Open",
       createdAt: new Date().toISOString(),
     };
 
     setItems((current) => [...current, item]);
     setDescription("");
+    setDueDate("");
     setMessage("EA item added.");
+  }
+
+  function updateDueDate(id: string, value: string) {
+    setItems((current) =>
+      current.map((item) =>
+        item.id === id
+          ? { ...item, dueDate: value }
+          : item,
+      ),
+    );
   }
 
   function updateDescription(id: string, value: string) {
@@ -248,6 +281,19 @@ export default function EAAssessment({
               />
             </label>
 
+            <label className="session-field">
+              Due date (optional)
+              <Input
+                type="date"
+                value={dueDate}
+                onChange={(_, data) => setDueDate(data.value)}
+              />
+            </label>
+
+            <p className="workspace-secondary">
+              Action owner: {project.assignedEA}
+            </p>
+
             <Button
               appearance="primary"
               disabled={!description.trim()}
@@ -299,7 +345,20 @@ export default function EAAssessment({
                     }
                   />
                 </label>
+                <label className="session-field">
+                  Due date (optional)
+                  <Input
+                    type="date"
+                    value={item.dueDate}
+                    onChange={(_, data) =>
+                      updateDueDate(item.id, data.value)
+                    }
+                  />
+                </label>
 
+                <p className="workspace-secondary">
+                  Action owner: {project.assignedEA}
+                </p>
                 <label className="session-field">
                   EA comments (optional)
                   <Textarea

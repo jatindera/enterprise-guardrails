@@ -1725,3 +1725,79 @@ button.summary-card:focus-visible {
   color: #52677a;
   font-size: 12px;
 }
+
+.supporting-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.supporting-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #dce6ef;
+  border-radius: 12px;
+}
+
+.supporting-panel--blue {
+  background: #f2f8fd;
+  border-left: 4px solid #2778bd;
+}
+
+.supporting-panel > h2,
+.supporting-panel > h3,
+.supporting-panel > p {
+  margin: 0;
+}
+
+.supporting-panel .session-field {
+  width: 100%;
+}
+
+.supporting-workspace .session-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.supporting-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 20px;
+}
+
+.supporting-filters .session-field {
+  flex: 1 1 200px;
+}
+
+.supporting-preserve-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.supporting-template {
+  width: 100%;
+  padding-top: 14px;
+  border-top: 1px solid #dce6ef;
+}
+
+.supporting-filters {
+  align-items: flex-end;
+}
+
+.supporting-filters .session-field {
+  margin-bottom: 0;
+}
+
+.supporting-filters > button {
+  align-self: flex-end;
+  margin: 0;
+  min-height: 32px;
+}

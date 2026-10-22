@@ -93,7 +93,11 @@ export default function SecurityRecord({
 
   useEffect(() => {
     if (conditions.length === 0) return;
-    updateProject({ securityConditions: conditions.map(({ id, status, dueDate }) => ({ id, status, dueDate })) });
+    updateProject({
+      securityConditions: conditions.map((condition) => ({
+        ...condition,
+      })),
+    });
   }, [conditions, updateProject]);
 
   function attachFile(
@@ -265,7 +269,9 @@ export default function SecurityRecord({
     updateProject({
       securityStatus: decision === "Conditional approval" ? "Conditional" : decision,
       securityRisk: risk,
-      securityConditions: conditions.map(({ id, status, dueDate }) => ({ id, status, dueDate })),
+      securityConditions: conditions.map((condition) => ({
+        ...condition,
+      })),
     });
     setRecords((current) => [
       ...current,

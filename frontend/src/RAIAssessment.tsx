@@ -87,7 +87,11 @@ export default function RAIAssessment({
 
   useEffect(() => {
     if (conditions.length === 0) return;
-    updateProject({ raiConditions: conditions.map(({ id, status, dueDate }) => ({ id, status, dueDate })) });
+    updateProject({
+      raiConditions: conditions.map((condition) => ({
+        ...condition,
+      })),
+    });
   }, [conditions, updateProject]);
 
   const openCount = conditions.filter(
@@ -214,11 +218,11 @@ export default function RAIAssessment({
       current.map((item) =>
         item.id === id
           ? {
-              ...item,
-              status: "Closed",
-              closedBy: reviewer.trim(),
-              closedAt: new Date().toISOString(),
-            }
+            ...item,
+            status: "Closed",
+            closedBy: reviewer.trim(),
+            closedAt: new Date().toISOString(),
+          }
           : item
       )
     );
@@ -235,11 +239,11 @@ export default function RAIAssessment({
       current.map((item) =>
         item.id === id
           ? {
-              ...item,
-              status: "Open",
-              closedBy: undefined,
-              closedAt: undefined,
-            }
+            ...item,
+            status: "Open",
+            closedBy: undefined,
+            closedAt: undefined,
+          }
           : item
       )
     );
@@ -295,7 +299,9 @@ export default function RAIAssessment({
     updateProject({
       raiStatus: decision === "Conditional approval" ? "Conditional" : decision,
       raiRisk: risk,
-      raiConditions: conditions.map(({ id, status, dueDate }) => ({ id, status, dueDate })),
+      raiConditions: conditions.map((condition) => ({
+        ...condition,
+      })),
     });
     setRecords((current) => [...current, snapshot]);
     setMessage("RAI decision snapshot saved locally.");
@@ -553,7 +559,7 @@ export default function RAIAssessment({
             const overdue =
               condition.status === "Open" &&
               new Date(`${condition.dueDate}T23:59:59`).getTime() <
-                Date.now();
+              Date.now();
 
             return (
               <article className="ea-record" key={condition.id}>

@@ -9,6 +9,22 @@ export type ReviewStatus =
 
 export type Rating = "Low" | "Medium" | "High" | "Not assessed";
 
+export interface TrackedCondition {
+  id: string;
+  description?: string;
+  owner?: string;
+  comments?: string;
+  status: "Open" | "Closed";
+  dueDate: string;
+}
+
+export interface EAAction extends TrackedCondition {
+  description: string;
+  comments: string;
+  createdAt: string;
+  closedAt?: string;
+}
+
 export interface Project {
   demandId: string;
   name: string;
@@ -23,12 +39,12 @@ export interface Project {
   raiRisk: Rating;
   nextAction: string;
   overdueActions: number;
-    arbStatus:
-    | "Not applicable"
-    | "Not scheduled"
-    | "In progress"
-    | "Returned for review"
-    | "Completed";
+  arbStatus:
+  | "Not applicable"
+  | "Not scheduled"
+  | "In progress"
+  | "Returned for review"
+  | "Completed";
   arbCompletionDate?: string;
   gateDecision?: "Approved" | "Conditional approval" | "On hold" | "Rejected" | "Not applicable";
   gateScope?: string;
@@ -41,13 +57,14 @@ export interface Project {
   leanixUrl?: string;
   productionComments?: string;
   productionSavedAt?: string;
-  securityConditions?: { id: string; status: "Open" | "Closed"; dueDate: string }[];
-  raiConditions?: { id: string; status: "Open" | "Closed"; dueDate: string }[];
-    intakeSource?: {
+  securityConditions?: TrackedCondition[];
+  raiConditions?: TrackedCondition[];
+  intakeSource?: {
     fileName: string;
     markdown: string;
     importedAt: string;
   };
+  eaItems?: EAAction[];
 }
 
 export type PortfolioFilter =
@@ -57,7 +74,7 @@ export type PortfolioFilter =
   | "conditional"
   | "arbCompleted";
 
-  export interface AcceptedMeetingReview {
+export interface AcceptedMeetingReview {
   text: string;
   acceptedAt: string;
 }
