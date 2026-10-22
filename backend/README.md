@@ -1,0 +1,1 @@
+uv run uvicorn app.main:app --reload --port 8000 --log-level info --log-config logging.json
