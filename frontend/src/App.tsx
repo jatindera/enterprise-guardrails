@@ -34,6 +34,7 @@ import ProjectWorkspace from "./ProjectWorkspace";
 
 import type { IntakeDraft } from "./IntakeImport";
 import type { PortfolioFilter, Project } from "./types";
+import BackendStatus from "./BackendStatus";
 
 type NavigationItem =
   | "Portfolio"
@@ -241,6 +242,7 @@ function App() {
           </div>
 
           <div className="user-profile">
+            <BackendStatus />
             <span className="environment-label">
               LOCAL DEVELOPMENT
             </span>
