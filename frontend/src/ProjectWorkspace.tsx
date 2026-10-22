@@ -207,7 +207,6 @@ function ProjectWorkspaceContent({
           type="button"
           className={reviewCardClass("ARB review")}
           aria-pressed={section === "ARB review"}
-          disabled={!arbRequired}
           onClick={() => setSection("ARB review")}
         >
           <strong>ARB</strong>
@@ -222,8 +221,8 @@ function ProjectWorkspaceContent({
         >
           <strong>Production gate</strong>
           <span>{project.gateRecordedAt && !gateIsCurrent(project)
-              ? "Review changed — recheck"
-              : project.gateDecision ?? "Not recorded"}</span>
+            ? "Review changed — recheck"
+            : project.gateDecision ?? "Not recorded"}</span>
         </button>
       </section>
 
@@ -244,9 +243,6 @@ function ProjectWorkspaceContent({
               section === item ? "primary" : "subtle"
             }
             aria-pressed={section === item}
-            disabled={
-              item === "ARB review" && !arbRequired
-            }
             onClick={() => setSection(item)}
           >
             {item}
@@ -359,7 +355,7 @@ function ProjectWorkspaceContent({
       </div>
 
       <div hidden={section !== "ARB review"}>
-        {arbRequired && <ARBReview project={project} />}
+        <ARBReview project={project} />
       </div>
 
       <div hidden={section !== "Production gate"}>
