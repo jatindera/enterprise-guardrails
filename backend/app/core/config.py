@@ -18,3 +18,11 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+
+    sql_server: str = ""
+    sql_database: str = ""
+    sql_auth_mode: Literal["azure_cli", "managed_identity"] = "azure_cli"
+    sql_odbc_driver: str = "ODBC Driver 18 for SQL Server"
+
+    # Optional: set only when using a user-assigned managed identity.
+    sql_managed_identity_client_id: str | None = None
