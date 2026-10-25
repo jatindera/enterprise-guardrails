@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { parseIntake } from "./intake/parseIntake";
 import {
   Button,
   Dialog,
@@ -17,105 +18,24 @@ export interface IntakeDraft {
   name: string;
   businessFunction?: string;
   assignedEA?: string;
+  assignedSecurity?: string;
   markdown: string;
   fileName: string;
+  expectedRevision?: number;
 }
 
 interface IntakeImportProps {
   open: boolean;
   existingDemandIds: string[];
+  existingProjectRevisions: Record<string, number>;
   onClose: () => void;
-  onImport: (draft: IntakeDraft) => void;
-}
-
-function cleanLine(line: string): string {
-  return line
-    .replace(/\\([*#:_-])/g, "$1")
-    .replace(/\*\*/g, "")
-    .replace(/^#{1,6}\s*/, "")
-    .replace(/^\s*-\s*/, "")
-    .trim();
-}
-
-function readField(
-  lines: string[],
-  fieldName: string,
-): string | undefined {
-  const prefix = `${fieldName.toLowerCase()}:`;
-
-  const line = lines.find((value) =>
-    value.toLowerCase().startsWith(prefix),
-  );
-
-  return line?.slice(prefix.length).trim() || undefined;
-}
-
-function parseIntake(
-  markdown: string,
-  fileName: string,
-): IntakeDraft {
-  const lines = markdown
-    .split(/\r?\n/)
-    .map(cleanLine)
-    .filter(Boolean);
-
-  const demandLine = lines.find((line) =>
-    /^Demand\s*Id\s*[-:]/i.test(line),
-  );
-
-  const demandMatch = demandLine?.match(
-    /^Demand\s*Id\s*[-:]\s*(\d+)\s*$/i,
-  );
-
-  if (!demandMatch) {
-    throw new Error(
-      "A numeric Demand ID was not found. Expected: Demand Id - 3601",
-    );
-  }
-
-  const titleField = readField(lines, "Title");
-
-  // The export normally has the project heading immediately
-  // before its Demand ID heading.
-  const demandIndex = lines.indexOf(demandLine!);
-  const headingBeforeDemand =
-    demandIndex > 0 ? lines[demandIndex - 1] : undefined;
-
-  const name = titleField || headingBeforeDemand;
-
-  if (!name) {
-    throw new Error(
-      "Project name was not found. Include a project heading or Title field.",
-    );
-  }
-
-  const architectField = readField(lines, "Architect Assigned");
-
-  // Convert a Markdown email link into its visible label.
-  const assignedEA = architectField
-    ?.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .trim();
-
-  return {
-    demandId: demandMatch[1].replace(/^0+(?=\d)/, ""),
-    name,
-    businessFunction: readField(
-      lines,
-      "Demand Stakeholder LOB or Function",
-    ),
-    assignedEA:
-      assignedEA &&
-      !/^(not assigned|not selected|not specified)$/i.test(assignedEA)
-        ? assignedEA
-        : undefined,
-    markdown,
-    fileName,
-  };
+  onImport: (draft: IntakeDraft) => Promise<void>;
 }
 
 export default function IntakeImport({
   open,
   existingDemandIds,
+  existingProjectRevisions,
   onClose,
   onImport,
 }: IntakeImportProps) {
@@ -125,6 +45,7 @@ export default function IntakeImport({
   const [draft, setDraft] = useState<IntakeDraft | null>(null);
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [demandId, setDemandId] = useState("");
 
   const isExisting =
@@ -155,7 +76,11 @@ export default function IntakeImport({
         throw new Error("The selected file is empty.");
       }
 
-      setDraft(parseIntake(markdown, file.name));
+      const parsed = parseIntake(markdown, file.name);
+      setDraft({
+        ...parsed,
+        expectedRevision: existingProjectRevisions[parsed.demandId],
+      });
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -167,11 +92,24 @@ export default function IntakeImport({
     }
   }
 
+  async function submitImport() {
+    if (!draft || reading || submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await onImport(draft);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Import failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <Dialog
       open={open}
       onOpenChange={(_, data) => {
-        if (!data.open) onClose();
+        if (!data.open && !submitting) onClose();
       }}
     >
       <DialogSurface className="intake-dialog">
@@ -193,6 +131,7 @@ export default function IntakeImport({
                   method === "file" ? "primary" : "secondary"
                 }
                 aria-pressed={method === "file"}
+                disabled={reading || submitting}
                 onClick={() => setMethod("file")}
               >
                 Upload .md file
@@ -205,6 +144,7 @@ export default function IntakeImport({
                     : "secondary"
                 }
                 aria-pressed={method === "dataverse"}
+                disabled={reading || submitting}
                 onClick={() => setMethod("dataverse")}
               >
                 Retrieve by Demand ID
@@ -224,7 +164,7 @@ export default function IntakeImport({
                   id="intake-markdown"
                   type="file"
                   accept=".md,text/markdown"
-                  disabled={reading}
+                  disabled={reading || submitting}
                   onChange={(event) => {
                     void handleFile(event.target.files?.[0]);
                   }}
@@ -264,6 +204,12 @@ export default function IntakeImport({
                       <dt>Assigned EA</dt>
                       <dd>{draft.assignedEA || "Not provided"}</dd>
 
+                      <dt>Assigned Security reviewer</dt>
+                      <dd>{draft.assignedSecurity || "Not assigned"}</dd>
+
+                      <dt>Assigned RAI manager</dt>
+                      <dd>{isExisting ? "Existing RAI assignment will be retained" : "Chris Cawthon"}</dd>
+
                       <dt>Source</dt>
                       <dd>{draft.fileName}</dd>
                     </dl>
@@ -277,8 +223,8 @@ export default function IntakeImport({
                     </MessageBar>
 
                     <p className="intake-help">
-                      This first importer reads project identity,
-                      business function, and assigned EA. It retains
+                      This importer reads project identity,
+                      business function, assigned EA, and Security reviewer. It retains
                       the original Markdown for later processing.
                       It does not interpret approvals from the file.
                     </p>
@@ -323,25 +269,23 @@ export default function IntakeImport({
             )}
 
             <p className="intake-help">
-              Development mode: imports are stored in browser
-              memory only and are cleared on page reload.
+              Project details and intake snapshots are stored in Azure SQL.
+              Review decisions and uploaded evidence still remain in memory.
             </p>
           </DialogContent>
 
           <DialogActions>
-            <Button appearance="secondary" onClick={onClose}>
+            <Button appearance="secondary" disabled={submitting} onClick={onClose}>
               Cancel
             </Button>
 
             {method === "file" && (
               <Button
                 appearance="primary"
-                disabled={!draft || reading}
-                onClick={() => {
-                  if (draft) onImport(draft);
-                }}
+                disabled={!draft || reading || submitting}
+                onClick={() => void submitImport()}
               >
-                {isExisting ? "Update intake details" : "Add project"}
+                {submitting ? "Saving…" : isExisting ? "Update intake details" : "Add project"}
               </Button>
             )}
           </DialogActions>

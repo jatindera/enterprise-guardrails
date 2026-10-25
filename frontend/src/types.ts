@@ -26,10 +26,16 @@ export interface EAAction extends TrackedCondition {
 }
 
 export interface Project {
+  id?: string;
+  revision?: number;
+  createdAt?: string;
+  updatedAt?: string;
   demandId: string;
   name: string;
   businessFunction: string;
   assignedEA: string;
+  assignedSecurity?: string;
+  assignedRAI?: string;
   stage: "Architecture review" | "Security & RAI" | "Stage gate" | "Production";
   eaStatus: ReviewStatus;
   securityStatus: ReviewStatus;

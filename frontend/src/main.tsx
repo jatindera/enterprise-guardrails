@@ -6,6 +6,7 @@ import {
 } from "@fluentui/react-components";
 
 import App from "./App";
+import AuthGate from "./auth/AuthGate";
 import "./index.css";
 
 const enterpriseTheme = {
@@ -20,7 +21,7 @@ const enterpriseTheme = {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <FluentProvider theme={enterpriseTheme}>
-      <App />
+      <AuthGate><App /></AuthGate>
     </FluentProvider>
   </React.StrictMode>,
 );

@@ -1,3 +1,4 @@
+import ProjectReviewers from "./ProjectReviewers";
 import { gateIsCurrent } from "./projectWorkflow";
 import { useState } from "react";
 
@@ -24,6 +25,7 @@ import ProductionRecord from "./ProductionRecord";
 interface ProjectWorkspaceProps {
   project: Project;
   onBack: () => void;
+  onSaveRAIAssignment: (demandId: string, name: string, expectedRevision: number) => Promise<void>;
 }
 
 type WorkspaceSection =
@@ -51,12 +53,14 @@ const sections: WorkspaceSection[] = [
 export default function ProjectWorkspace({
   project,
   onBack,
+  onSaveRAIAssignment,
 }: ProjectWorkspaceProps) {
   return (
     <ProjectWorkspaceContent
       key={project.demandId}
       project={project}
       onBack={onBack}
+      onSaveRAIAssignment={onSaveRAIAssignment}
     />
   );
 }
@@ -64,6 +68,7 @@ export default function ProjectWorkspace({
 function ProjectWorkspaceContent({
   project,
   onBack,
+  onSaveRAIAssignment,
 }: ProjectWorkspaceProps) {
   const [section, setSection] =
     useState<WorkspaceSection>("Overview");
@@ -73,7 +78,6 @@ function ProjectWorkspaceContent({
   const [acceptedReview, setAcceptedReview] =
     useState<AcceptedMeetingReview | null>(null);
 
-  const arbRequired = project.arbStatus !== "Not applicable";
 
   function reviewCardClass(targetSection: WorkspaceSection) {
     return [
@@ -270,11 +274,6 @@ function ProjectWorkspaceContent({
                 </div>
 
                 <div>
-                  <dt>Assigned EA</dt>
-                  <dd>{project.assignedEA}</dd>
-                </div>
-
-                <div>
                   <dt>Current stage</dt>
                   <dd>{project.stage}</dd>
                 </div>
@@ -289,6 +288,7 @@ function ProjectWorkspaceContent({
                   <dd>{project.overdueActions}</dd>
                 </div>
               </dl>
+              <ProjectReviewers project={project} onSave={onSaveRAIAssignment} />
             </div>
           </section>
 

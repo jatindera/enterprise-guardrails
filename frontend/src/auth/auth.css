@@ -1,0 +1,38 @@
+/* Scoped to authentication screens and the profile menu. */
+.eg-login { box-sizing: border-box; min-height: 100dvh; padding: 32px clamp(24px, 6vw, 100px); color: #17334c; background: radial-gradient(ellipse at 85% 25%, #dceef9 0, transparent 48%), linear-gradient(135deg, #f8fbfe, #edf4fb); display: flex; flex-direction: column; font-family: "Segoe UI", sans-serif; border-top: 4px solid #e52535; }
+.eg-login * { box-sizing: border-box; }
+.eg-login-header { display: flex; align-items: center; gap: 24px; }
+.eg-login-logo { width: 132px; height: auto; object-fit: contain; }
+.eg-login-wordmark { font-size: 17px; font-weight: 600; border-left: 1px solid #c6d6e4; padding-left: 24px; }
+.eg-login-layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); gap: clamp(36px, 7vw, 110px); align-items: center; width: 100%; max-width: 1180px; margin: 56px auto; }
+.eg-login-eyebrow { color: #196db0; font-size: 12px; font-weight: 700; letter-spacing: .13em; }
+.eg-login-intro h1 { font-size: clamp(36px, 4vw, 56px); line-height: 1.12; letter-spacing: -.035em; margin: 18px 0 24px; color: #143651; }
+.eg-login-lead { font-size: 17px; line-height: 1.7; color: #526b80; max-width: 560px; }
+.eg-login-features { display: grid; gap: 18px; margin-top: 32px; }
+.eg-login-features > div { display: flex; gap: 14px; align-items: center; font-size: 14px; }
+.eg-login-features svg { font-size: 24px; color: #196db0; flex-shrink: 0; }
+.eg-login-card { background: #fff; border: 1px solid #d6e4f0; border-radius: 20px; padding: clamp(24px, 3vw, 40px); box-shadow: 0 18px 60px #16476912; }
+.eg-login-symbol { display: grid; place-items: center; height: 56px; width: 56px; background: #eaf3fb; border-radius: 16px; color: #196db0; font-size: 30px; }
+.eg-login-card h2 { font-size: 27px; margin: 24px 0 12px; line-height: 1.2; }
+.eg-login-card > p { color: #607487; line-height: 1.65; margin: 0 0 26px; }
+.eg-login-submit { width: 100%; margin-top: 12px; min-height: 46px; }
+.eg-login-recovery { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.eg-login-recovery:empty { display: none; }
+.eg-login-access { display: grid; gap: 6px; border-top: 1px solid #e5edf4; margin-top: 28px; padding-top: 22px; font-size: 12px; color: #63778a; }
+.eg-login-access strong { color: #344f65; font-weight: 600; }
+.eg-login-footer { text-align: center; font-size: 12px; color: #677e91; padding: 12px 0; }
+.eg-profile-trigger { display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 38px; height: 38px; border: 1px solid #cde0f2; border-radius: 50%; background: #eaf3ff; color: #196db0; font-size: 13px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+.eg-profile-trigger:hover { background: #dcecff; border-color: #92b7da; }
+.eg-profile-trigger:focus-visible { outline: 2px solid #196db0; outline-offset: 3px; }
+.eg-profile-details { padding: 10px 12px 14px; display: grid; gap: 5px; max-width: min(310px, 80vw); overflow-wrap: anywhere; }
+.eg-profile-details span { font-size: 12px; color: #5c7184; }
+.eg-profile-error { color: #a4262c; font-size: 12px; max-width: 270px; padding: 8px 12px; }
+@media (max-width: 760px) {
+  .eg-login { padding: 24px; }
+  .eg-login-layout { grid-template-columns: 1fr; gap: 32px; margin: 36px auto; max-width: 520px; }
+  .eg-login-intro h1 { font-size: 36px; }
+  .eg-login-features { gap: 12px; margin-top: 20px; }
+  .eg-login-header { gap: 16px; }
+  .eg-login-logo { width: 104px; }
+  .eg-login-wordmark { padding-left: 16px; font-size: 14px; }
+}

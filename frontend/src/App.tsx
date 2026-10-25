@@ -1,7 +1,7 @@
 import { ProjectUpdateContext } from "./ProjectUpdates";
 import type { ProjectPatch } from "./ProjectUpdates";
 import { deriveStage, overdueConditionCount } from "./projectWorkflow";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import Reports from "./Reports";
 import {
@@ -25,7 +25,7 @@ import {
   SettingsRegular,
 } from "@fluentui/react-icons";
 
-import { projects as initialProjects } from "./projectData";
+import { getProject, importProject, listProjects, projectFromApi, updateRAIAssignment } from "./api/projects";
 import { matchesPortfolioFilter } from "./portfolioUtils";
 
 import IntakeImport from "./IntakeImport";
@@ -35,6 +35,9 @@ import ProjectWorkspace from "./ProjectWorkspace";
 import type { IntakeDraft } from "./IntakeImport";
 import type { PortfolioFilter, Project } from "./types";
 import BackendStatus from "./BackendStatus";
+
+import { useAuth } from "./auth/AuthGate";
+import ProfileMenu from "./auth/ProfileMenu";
 
 type NavigationItem =
   | "Portfolio"
@@ -66,11 +69,13 @@ const navigation: {
   ];
 
 function App() {
+  const user = useAuth();
+  const isAdmin = user.roles.includes("Admin");
   const [activePage, setActivePage] =
     useState<NavigationItem>("Portfolio");
 
   const [projects, setProjects] =
-    useState<Project[]>(initialProjects);
+    useState<Project[]>([]);
 
   const [portfolioFilter, setPortfolioFilter] =
     useState<PortfolioFilter>("all");
@@ -102,9 +107,59 @@ function App() {
     }));
   }, []);
 
-  function openProject(demandId: string) {
-    setOpenedDemandIds((current) => current.includes(demandId) ? current : [...current, demandId]);
-    setSelectedDemandId(demandId);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [opening, setOpening] = useState(false);
+  const loadSequence = useRef(0);
+  const openSequence = useRef(0);
+
+  const refreshProjects = useCallback(async (signal?: AbortSignal) => {
+    const sequence = ++loadSequence.current;
+    setLoading(true);
+    setLoadError("");
+    try {
+      const records = await listProjects(signal);
+      if (signal?.aborted || sequence !== loadSequence.current) return;
+      setProjects((current) => records.map((record) =>
+        projectFromApi(record, current.find((item) => item.demandId === record.demandId)),
+      ));
+    } catch (cause) {
+      if (signal?.aborted || sequence !== loadSequence.current) return;
+      setLoadError(cause instanceof Error ? cause.message : "Could not load projects.");
+    } finally {
+      if (!signal?.aborted && sequence === loadSequence.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshProjects(controller.signal);
+    return () => controller.abort();
+  }, [refreshProjects]);
+
+  async function openProject(demandId: string) {
+    const sequence = ++openSequence.current;
+    setOpening(true);
+    setLoadError("");
+    try {
+      const record = await getProject(demandId);
+      if (sequence !== openSequence.current) return;
+      setProjects((current) => {
+        const existing = current.find((item) => item.demandId === demandId);
+        const updated = projectFromApi(record, existing);
+        return existing
+          ? current.map((item) => item.demandId === demandId ? updated : item)
+          : [updated, ...current];
+      });
+      setOpenedDemandIds((current) => current.includes(demandId) ? current : [...current, demandId]);
+      setSelectedDemandId(demandId);
+    } catch (cause) {
+      if (sequence === openSequence.current) {
+        setLoadError(cause instanceof Error ? cause.message : "Could not open project.");
+      }
+    } finally {
+      if (sequence === openSequence.current) setOpening(false);
+    }
   }
 
   const [intakeOpen, setIntakeOpen] = useState(false);
@@ -158,67 +213,25 @@ function App() {
     },
   ];
 
-  function handleIntakeImport(draft: IntakeDraft) {
-    const existing = projects.find(
-      (project) => project.demandId === draft.demandId,
-    );
-
-    const intakeSource = {
-      fileName: draft.fileName,
-      markdown: draft.markdown,
-      importedAt: new Date().toISOString(),
-    };
-
-    if (existing) {
-      setProjects((current) =>
-        current.map((project) =>
-          project.demandId === draft.demandId
-            ? {
-              ...project,
-              name: draft.name,
-              businessFunction:
-                draft.businessFunction ||
-                project.businessFunction,
-              assignedEA:
-                draft.assignedEA || project.assignedEA,
-              intakeSource,
-            }
-            : project,
-        ),
-      );
-
-      setImportMessage(
-        `Intake details updated for #${draft.demandId}. Existing review decisions and actions were preserved.`,
-      );
-    } else {
-      const newProject: Project = {
-        demandId: draft.demandId,
-        name: draft.name,
-        businessFunction:
-          draft.businessFunction || "Not provided",
-        assignedEA: draft.assignedEA || "Not assigned",
-        stage: "Architecture review",
-        eaStatus: "Pending",
-        securityStatus: "Pending",
-        raiStatus: "Pending",
-        eaComplexity: "Not assessed",
-        securityRisk: "Not assessed",
-        raiRisk: "Not assessed",
-        nextAction:
-          "Review imported intake and confirm review applicability",
-        overdueActions: 0,
-        arbStatus: "Not scheduled",
-        intakeSource,
-      };
-
-      setProjects((current) => [newProject, ...current]);
-
-      setImportMessage(
-        `Project #${draft.demandId} added. Review applicability, assignments, and classifications need confirmation.`,
-      );
-    }
-
+  async function handleIntakeImport(draft: IntakeDraft): Promise<void> {
+    if (!isAdmin) throw new Error("Administrator access is required.");
+    const record = await importProject(draft);
+    setProjects((current) => {
+      const existing = current.find((item) => item.demandId === record.demandId);
+      const updated = projectFromApi(record, existing);
+      return existing
+        ? current.map((item) => item.demandId === record.demandId ? updated : item)
+        : [updated, ...current];
+    });
+    setImportMessage(`Project #${record.demandId} and its intake snapshot saved to Azure SQL.`);
     setIntakeOpen(false);
+  }
+
+  async function saveRAIAssignment(demandId: string, name: string, expectedRevision: number): Promise<void> {
+    if (!isAdmin) throw new Error("Administrator access is required.");
+    const record = await updateRAIAssignment(demandId, name, expectedRevision);
+    setProjects((current) => current.map((project) => project.demandId === record.demandId
+      ? projectFromApi(record, project) : project));
   }
 
   return (
@@ -248,13 +261,11 @@ function App() {
             </span>
 
             <div className="user-description">
-              <strong>Jatinder Arora</strong>
-              <span>Enterprise Architect · Demo identity</span>
+              <strong>{user.name}</strong>
+              <span>{user.roles.join(" · ")}</span>
             </div>
 
-            <div className="user-avatar" aria-hidden="true">
-              JA
-            </div>
+            <ProfileMenu />
           </div>
         </header>
 
@@ -263,7 +274,7 @@ function App() {
             <div className="navigation-label">WORKSPACE</div>
 
             <nav aria-label="Main navigation">
-              {navigation.map((item) => (
+              {navigation.filter((item) => isAdmin || item.name !== "Administration").map((item) => (
                 <Button
                   key={item.name}
                   appearance="subtle"
@@ -297,6 +308,18 @@ function App() {
                 : ""}
             </div>
 
+            {loadError && (
+              <MessageBar intent="error">
+                <MessageBarBody>
+                  {loadError}
+                  <Button disabled={loading} onClick={() => void refreshProjects()}>
+                    Reload portfolio
+                  </Button>
+                </MessageBarBody>
+              </MessageBar>
+            )}
+            {opening && <p role="status">Opening project…</p>}
+
             <>
               <div hidden={activePage !== "Portfolio"}>
                 {openedDemandIds.map((demandId) => {
@@ -305,6 +328,7 @@ function App() {
                     <div key={demandId} hidden={selectedDemandId !== demandId}>
                       <ProjectWorkspace
                         project={project}
+                        onSaveRAIAssignment={saveRAIAssignment}
                         onBack={() => setSelectedDemandId(null)}
                       />
                     </div>
@@ -324,11 +348,24 @@ function App() {
                     <Button
                       appearance="primary"
                       icon={<ArrowUploadRegular />}
+                      disabled={loading || !isAdmin}
+                      title={isAdmin ? "Import intake" : "Administrator access is required"}
                       onClick={() => setIntakeOpen(true)}
                     >
                       Import intake
                     </Button>
                   </div>
+
+                  <div className="meeting-review-actions">
+                    <Button disabled={loading} onClick={() => void refreshProjects()}>
+                      {loading ? "Loading projects…" : "Reload portfolio"}
+                    </Button>
+                  </div>
+                  {!loading && !loadError && projects.length === 0 && (
+                    <MessageBar intent="info">
+                      <MessageBarBody>No projects in Azure SQL yet. Import an intake Markdown file to begin.</MessageBarBody>
+                    </MessageBar>
+                  )}
 
                   {importMessage && (
                     <div className="intake-notice">
@@ -342,7 +379,7 @@ function App() {
 
                   <section
                     className="summary-grid"
-                    aria-label="Sample portfolio summary"
+                    aria-label="Portfolio summary"
                   >
                     {summaries.map((summary) => (
                       <button
@@ -409,21 +446,25 @@ function App() {
               </div>
 
               <div hidden={activePage !== "Administration"}>
-                <Administration />
+                {isAdmin && <Administration />}
               </div>
             </>
 
             <footer className="page-footer">
-              Development preview · Sample project data and
-              in-memory imports. Authentication and backend
-              services are not connected.
+              Development preview · Project details and intake snapshots use Azure SQL.
+              Review decisions, files, and settings remain in memory. Entra SSO is connected.
+              Assessment edit permissions will be connected in a later increment.
             </footer>
 
-            {intakeOpen && (
+            {intakeOpen && isAdmin && (
               <IntakeImport
                 open={intakeOpen}
                 existingDemandIds={projects.map(
                   (project) => project.demandId,
+                )}
+                existingProjectRevisions={Object.fromEntries(
+                  projects.flatMap((project) => project.revision !== undefined
+                    ? [[project.demandId, project.revision]] : []),
                 )}
                 onClose={() => setIntakeOpen(false)}
                 onImport={handleIntakeImport}
