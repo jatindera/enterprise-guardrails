@@ -79,6 +79,9 @@ function ProjectWorkspaceContent({
   const [, setSecurityAcceptedReview] =
     useState<AcceptedMeetingReview | null>(null);
 
+  const [, setRAIAcceptedReview] =
+    useState<AcceptedMeetingReview | null>(null);
+
 
   function reviewCardClass(targetSection: WorkspaceSection) {
     return [
@@ -361,7 +364,15 @@ function ProjectWorkspaceContent({
       </div>
 
       <div hidden={section !== "RAI assessment"}>
-        <RAIAssessment project={project} />
+        <ReviewSession
+          project={project}
+          preparationDomain="RAI"
+          onAcceptedReviewChange={setRAIAcceptedReview}
+          assessmentTab={{
+            label: "RAI assessment",
+            render: () => <RAIAssessment project={project} />,
+          }}
+        />
       </div>
 
       <div hidden={section !== "ARB review"}>

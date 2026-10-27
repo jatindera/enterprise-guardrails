@@ -133,6 +133,7 @@ export default function ARBReview({ project }: ARBReviewProps) {
       });
     }
   }
+  const [activeTab, setActiveTab] = useState<"documents" | "vote">("documents");
   const [artifacts, setArtifacts] = useState<ARBArtifact[]>([]);
   const [meetingDate, setMeetingDate] = useState("");
   const [meetingHeld, setMeetingHeld] = useState(false);
@@ -357,8 +358,18 @@ export default function ARBReview({ project }: ARBReviewProps) {
       </section>
 
       <div hidden={notApplicable}>
+        <div className="meeting-review-actions" role="group" aria-label="ARB review sections">
+          <Button appearance={activeTab === "documents" ? "primary" : "secondary"}
+            aria-pressed={activeTab === "documents"} onClick={() => setActiveTab("documents")}>
+            ADR & meeting documents
+          </Button>
+          <Button appearance={activeTab === "vote" ? "primary" : "secondary"}
+            aria-pressed={activeTab === "vote"} onClick={() => setActiveTab("vote")}>
+            Meeting & core-team vote
+          </Button>
+        </div>
 
-
+        <div hidden={activeTab !== "documents"}>
         <section className="content-panel arb-section">
           <div className="panel-heading">
             <h2>ADR & meeting documents</h2>
@@ -438,6 +449,8 @@ export default function ARBReview({ project }: ARBReviewProps) {
           </div>
         </section>
 
+        </div>
+        <div hidden={activeTab !== "vote"}>
         <section className="content-panel arb-section">
           <div className="panel-heading">
             <h2>Meeting & core-team vote</h2>
@@ -679,6 +692,7 @@ export default function ARBReview({ project }: ARBReviewProps) {
             </p>
           </div>
         </section>
+        </div>
       </div>
     </section>
   );
