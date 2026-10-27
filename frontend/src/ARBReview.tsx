@@ -5,7 +5,6 @@ import {
   Badge,
   Button,
   Checkbox,
-  Input,
   MessageBar,
   MessageBarBody,
   Textarea,
@@ -28,30 +27,6 @@ interface ARBArtifact {
   kind: ArtifactKind;
   file: File;
   addedAt: string;
-}
-
-interface ARBRecord {
-  id: string;
-  recordedAt: string;
-  meetingDate: string;
-  meetingHeld: boolean;
-  attendees: string;
-  corePresent: number;
-  votesFor: number;
-  votesAgainst: number;
-  abstentions: number;
-  votePassed: boolean;
-  eaApprovalConfirmed: boolean;
-  returnedForReview: boolean;
-  notes: string;
-  actions: string;
-  assignedEA: string;
-  outcome: "Completed" | "Returned for review" | "Pending";
-  artifacts: {
-    id: string;
-    kind: ArtifactKind;
-    fileName: string;
-  }[];
 }
 
 const documentGroups: {
@@ -135,42 +110,24 @@ export default function ARBReview({ project }: ARBReviewProps) {
   }
   const [activeTab, setActiveTab] = useState<"documents" | "vote">("documents");
   const [artifacts, setArtifacts] = useState<ARBArtifact[]>([]);
-  const [meetingDate, setMeetingDate] = useState("");
-  const [meetingHeld, setMeetingHeld] = useState(false);
-  const [attendees, setAttendees] = useState("");
-
-  const [corePresent, setCorePresent] = useState("");
-  const [votesFor, setVotesFor] = useState("0");
-  const [votesAgainst, setVotesAgainst] = useState("0");
-  const [abstentions, setAbstentions] = useState("0");
-
-  const [eaApprovalConfirmed, setEAApprovalConfirmed] =
-    useState(project.eaStatus === "Approved");
-
-  const [returnedForReview, setReturnedForReview] = useState(false);
-  const [notes, setNotes] = useState("");
-  const [actions, setActions] = useState("");
-
-  const [records, setRecords] = useState<ARBRecord[]>([]);
+  const [previewSelection, setPreviewSelection] = useState<"Against" | null>(null);
+  const [previewReason, setPreviewReason] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  const [previewVote, setPreviewVote] = useState<{ choice: "For" | "Against"; at: string } | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  
-  const present = Number(corePresent);
-  const favourable = Number(votesFor);
-  const against = Number(votesAgainst);
-  const abstained = Number(abstentions);
+  function previewInFavour() {
+    setPreviewSelection(null);
+    setPreviewError("");
+    setPreviewVote({ choice: "For", at: new Date().toISOString() });
+  }
 
-  const validVote =
-    [corePresent, votesFor, votesAgainst, abstentions].every(
-      (value) =>
-        /^\d+$/.test(value) &&
-        Number.isSafeInteger(Number(value))
-    ) &&
-    present > 0 &&
-    favourable + against + abstained === present;
-
-  const votePassed = validVote && favourable > present / 2;
+  function previewAgainst() {
+    if (!previewReason.trim()) { setPreviewError("Please enter a reason."); return; }
+    setPreviewError("");
+    setPreviewVote({ choice: "Against", at: new Date().toISOString() });
+  }
 
   function attachFiles(files: File[], kind: ArtifactKind) {
     setError("");
@@ -228,70 +185,6 @@ export default function ARBReview({ project }: ARBReviewProps) {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function saveRecord() {
-    setError("");
-    setMessage("");
-    if (notApplicable) return;
-
-    if (!meetingDate) {
-      setError("Enter the ARB meeting date.");
-      return;
-    }
-
-    if (meetingHeld && !validVote) {
-      setError(
-        "Enter the attending core-member count and all votes. " +
-        "For, Against, and Abstain must total the attending core members."
-      );
-      return;
-    }
-
-    if (returnedForReview && (!meetingHeld || !notes.trim())) {
-      setError(
-        "For a returned review, confirm the meeting was held " +
-        "and explain what needs another review."
-      );
-      return;
-    }
-
-    const outcome: ARBRecord["outcome"] = returnedForReview
-      ? "Returned for review"
-      : meetingHeld && votePassed && eaApprovalConfirmed && project.eaStatus === "Approved"
-        ? "Completed"
-        : "Pending";
-
-    const record: ARBRecord = {
-      id: crypto.randomUUID(),
-      recordedAt: new Date().toISOString(),
-      meetingDate,
-      meetingHeld,
-      attendees: attendees.trim(),
-      corePresent: meetingHeld ? present : 0,
-      votesFor: meetingHeld ? favourable : 0,
-      votesAgainst: meetingHeld ? against : 0,
-      abstentions: meetingHeld ? abstained : 0,
-      votePassed: meetingHeld && votePassed,
-      eaApprovalConfirmed,
-      returnedForReview,
-      notes: notes.trim(),
-      actions: actions.trim(),
-      assignedEA: project.assignedEA,
-      outcome,
-      artifacts: artifacts.map((artifact) => ({
-        id: artifact.id,
-        kind: artifact.kind,
-        fileName: artifact.file.name,
-      })),
-    };
-
-    updateProject({
-      arbStatus: outcome === "Pending" ? "In progress" : outcome,
-      arbCompletionDate: outcome === "Completed" ? meetingDate : undefined,
-    });
-    setRecords((current) => [...current, record]);
-    setMessage(`ARB record saved locally: ${outcome}.`);
-  }
-
   return (
     <section className="arb-review">
       <div className="session-heading">
@@ -320,9 +213,7 @@ export default function ARBReview({ project }: ARBReviewProps) {
 
       <MessageBar intent="info">
         <MessageBarBody>
-          Local prototype. Files, votes, and records are retained during
-          this app session and clear on refresh. Reviewer permissions, ADR
-          generation, and backend persistence await integration.
+          Files are held locally and clear on refresh. ADR generation, role-based voting, and backend persistence await integration.
         </MessageBarBody>
       </MessageBar>
 
@@ -365,7 +256,7 @@ export default function ARBReview({ project }: ARBReviewProps) {
           </Button>
           <Button appearance={activeTab === "vote" ? "primary" : "secondary"}
             aria-pressed={activeTab === "vote"} onClick={() => setActiveTab("vote")}>
-            Meeting & core-team vote
+            Core Team Vote
           </Button>
         </div>
 
@@ -451,247 +342,33 @@ export default function ARBReview({ project }: ARBReviewProps) {
 
         </div>
         <div hidden={activeTab !== "vote"}>
-        <section className="content-panel arb-section">
-          <div className="panel-heading">
-            <h2>Meeting & core-team vote</h2>
-          </div>
-
-          <div className="workspace-panel-body">
-            <label className="session-field">
-              Meeting date
-              <Input
-                type="date"
-                value={meetingDate}
-                onChange={(_, data) => setMeetingDate(data.value)}
-              />
-            </label>
-
-            <Checkbox
-              label="The ARB meeting was held"
-              checked={meetingHeld}
-              onChange={(_, data) =>
-                setMeetingHeld(data.checked === true)
-              }
-            />
-
-            <label className="session-field">
-              Attendees / core members present
-              <Textarea
-                value={attendees}
-                rows={3}
-                placeholder="List attendees and identify attending core members…"
-                onChange={(_, data) => setAttendees(data.value)}
-              />
-            </label>
-
-            <p className="workspace-secondary">
-              Only attending core members vote. Other attendees do not.
-              Passing requires more than half of attending core members
-              voting in favour.
-            </p>
-
-            <div className="arb-vote-grid">
-              <label className="session-field">
-                Core members present
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={corePresent}
-                  onChange={(_, data) => setCorePresent(data.value)}
-                />
-              </label>
-
-              <label className="session-field">
-                For
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={votesFor}
-                  onChange={(_, data) => setVotesFor(data.value)}
-                />
-              </label>
-
-              <label className="session-field">
-                Against
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={votesAgainst}
-                  onChange={(_, data) => setVotesAgainst(data.value)}
-                />
-              </label>
-
-              <label className="session-field">
-                Abstain
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={abstentions}
-                  onChange={(_, data) => setAbstentions(data.value)}
-                />
-              </label>
+          <section className="content-panel arb-section">
+            <div className="workspace-panel-body">
+              <div className="meeting-review-actions">
+                <Button appearance="primary" style={{ backgroundColor: "#168447", borderColor: "#168447", fontSize: "18px", padding: "12px 20px" }} onClick={previewInFavour}>
+                  Vote in Favour
+                </Button>
+                <Button appearance="primary" style={{ backgroundColor: "#bb3434", borderColor: "#bb3434", fontSize: "18px", padding: "12px 20px" }} onClick={() => { setPreviewSelection("Against"); setPreviewError(""); }}>
+                  Vote Against
+                </Button>
+              </div>
+              {previewSelection === "Against" && (
+                <div>
+                  <label className="session-field">Reason for voting against (required)
+                    <Textarea value={previewReason} required rows={3} onChange={(_, data) => setPreviewReason(data.value)} />
+                  </label>
+                  {previewError && <p role="alert">{previewError}</p>}
+                  <Button appearance="primary" onClick={previewAgainst}>Confirm vote against</Button>
+                </div>
+              )}
+              <div style={{ marginTop: "24px" }} aria-live="polite">
+                <h3>Combined live results</h3>
+                <p>In favour: — &nbsp; · &nbsp; Against: —</p>
+                <p className="workspace-secondary">Awaiting backend integration. Results are not live yet.</p>
+                {previewVote && <p className="workspace-secondary">Local preview: {previewVote.choice === "For" ? "in favour" : "against"} · {new Date(previewVote.at).toLocaleString()} (not submitted)</p>}
+              </div>
             </div>
-
-            <p className="workspace-secondary">
-              Vote result:{" "}
-              {!meetingHeld
-                ? "Awaiting meeting"
-                : !validVote
-                  ? "Complete the vote counts"
-                  : votePassed
-                    ? "Majority in favour"
-                    : "No majority in favour"}
-            </p>
-
-            <label className="session-field">
-              Discussion notes
-              <Textarea
-                value={notes}
-                rows={4}
-                placeholder="Record inputs, decisions, or reasons for another review…"
-                onChange={(_, data) => setNotes(data.value)}
-              />
-            </label>
-
-            <label className="session-field">
-              EA action items / progress
-              <Textarea
-                value={actions}
-                rows={4}
-                placeholder="List actions and update their progress here…"
-                onChange={(_, data) => setActions(data.value)}
-              />
-            </label>
-
-            <p className="workspace-secondary">
-              Action owner: {project.assignedEA}.
-            </p>
-
-            <Checkbox
-              label="Confirm the assigned EA has separately approved the architecture"
-              checked={eaApprovalConfirmed}
-              onChange={(_, data) =>
-                setEAApprovalConfirmed(data.checked === true)
-              }
-            />
-
-            <p className="workspace-secondary">
-              This records confirmation of separate EA approval;
-              it does not issue that approval.
-            </p>
-
-            <Checkbox
-              label="Returned for another ARB review"
-              checked={returnedForReview}
-              onChange={(_, data) =>
-                setReturnedForReview(data.checked === true)
-              }
-            />
-
-            <div className="meeting-review-actions">
-              <Button appearance="primary" onClick={saveRecord}>
-                Save local ARB record
-              </Button>
-            </div>
-
-            <p className="workspace-secondary">
-              Completed requires a held meeting, a favourable
-              majority vote, and separate EA approval.
-              Returned reviews are not completed.
-            </p>
-          </div>
-        </section>
-
-        <section className="content-panel arb-section">
-          <div className="panel-heading">
-            <h2>Review history</h2>
-          </div>
-
-          <div className="workspace-panel-body">
-            {records.length === 0 ? (
-              <p>No ARB records saved yet.</p>
-            ) : (
-              [...records].reverse().map((record) => (
-                <article className="ea-record" key={record.id}>
-                  <h3>{record.outcome}</h3>
-
-                  <p>
-                    Meeting: {record.meetingDate}
-                    {" · "}
-                    Core present: {record.corePresent}
-                  </p>
-
-                  <p>
-                    For: {record.votesFor}
-                    {" · "}
-                    Against: {record.votesAgainst}
-                    {" · "}
-                    Abstain: {record.abstentions}
-                  </p>
-
-                  <p className="workspace-secondary">
-                    Saved: {new Date(record.recordedAt).toLocaleString()}
-                  </p>
-
-                  <details>
-                    <summary>Read saved record</summary>
-
-                    <p>
-                      Meeting held: {record.meetingHeld ? "Yes" : "No"}
-                    </p>
-
-                    <p>
-                      EA approval confirmed:{" "}
-                      {record.eaApprovalConfirmed ? "Yes" : "No"}
-                    </p>
-
-                    <p>
-                      Returned for review:{" "}
-                      {record.returnedForReview ? "Yes" : "No"}
-                    </p>
-
-                    <h4>Attendees</h4>
-                    <p className="arb-preserve-text">
-                      {record.attendees || "Not recorded"}
-                    </p>
-
-                    <h4>Discussion notes</h4>
-                    <p className="arb-preserve-text">
-                      {record.notes || "None"}
-                    </p>
-
-                    <h4>EA actions</h4>
-                    <p>Owner: {record.assignedEA}</p>
-                    <p className="arb-preserve-text">
-                      {record.actions || "None recorded"}
-                    </p>
-
-                    <h4>Documents at record time</h4>
-                    {record.artifacts.length === 0 ? (
-                      <p>No documents attached.</p>
-                    ) : (
-                      record.artifacts.map((artifact) => (
-                        <p key={artifact.id}>
-                          {artifact.kind}: {artifact.fileName}
-                        </p>
-                      ))
-                    )}
-                  </details>
-                </article>
-              ))
-            )}
-
-            <p className="workspace-secondary">
-              These snapshots belong to the same project, not separate
-              completed ARBs. Completion reporting will count the
-              project once. Later uploads do not change earlier snapshots.
-            </p>
-          </div>
-        </section>
+          </section>
         </div>
       </div>
     </section>

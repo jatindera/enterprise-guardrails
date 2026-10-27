@@ -92,6 +92,30 @@ export function getProject(demandId: string): Promise<ProjectRecord> {
   return request<ProjectRecord>(`/api/projects/${encodeURIComponent(demandId)}`);
 }
 
+export interface EAAccess {
+  canEdit: boolean;
+  canManageAdditional: boolean;
+  additionalEmail: string | null;
+  primaryResolved: boolean;
+  revision: number;
+}
+
+export function getEAAccess(demandId: string): Promise<EAAccess> {
+  return request<EAAccess>(`/api/projects/${encodeURIComponent(demandId)}/ea-access`);
+}
+
+export function resolvePrimaryEA(demandId: string, expectedRevision: number): Promise<EAAccess> {
+  return request<EAAccess>(`/api/projects/${encodeURIComponent(demandId)}/ea-primary-resolution`, {
+    method: "POST", body: JSON.stringify({ expectedRevision }),
+  });
+}
+
+export function saveAdditionalEA(demandId: string, email: string | null, expectedRevision: number): Promise<EAAccess> {
+  return request<EAAccess>(`/api/projects/${encodeURIComponent(demandId)}/additional-ea`, {
+    method: "PATCH", body: JSON.stringify({ email, expectedRevision }),
+  });
+}
+
 export function importProject(draft: IntakeDraft): Promise<ProjectRecord> {
   return request<ProjectRecord>("/api/projects/import", {
     method: "POST",

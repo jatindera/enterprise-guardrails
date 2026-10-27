@@ -318,9 +318,9 @@ export default function EAApprovalReport({
             </details>
 
             <div className="meeting-review-actions">
-              <Button onClick={() => downloadReport(report)}>
+              <a href="#" onClick={(event) => { event.preventDefault(); downloadReport(report); }}>
                 Download report (.md)
-              </Button>
+              </a>
             </div>
           </article>
         ))}

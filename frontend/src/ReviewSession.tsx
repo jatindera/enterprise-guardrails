@@ -16,7 +16,6 @@ import {
   Button,
   MessageBar,
   MessageBarBody,
-  Select,
   Textarea,
 } from "@fluentui/react-components";
 
@@ -33,6 +32,7 @@ interface ReviewSessionProps {
   heading?: string;
   facilitatorName?: string;
   preparationDomain?: Exclude<PreparationScope, "All">;
+  canEditOverride?: boolean;
   onAcceptedReviewChange: (
     review: AcceptedMeetingReview | null,
   ) => void;
@@ -74,12 +74,13 @@ export default function ReviewSession({
   heading = "Shared review session",
   facilitatorName = project.assignedEA,
   preparationDomain = "EA",
+  canEditOverride,
   onAcceptedReviewChange,
   assessmentTab,
 }: ReviewSessionProps) {
   const access = preparationAccess(useAuth().roles);
   const preparationScope = preparationDomain;
-  const canPrepare = canEditPreparationFocus(access, preparationDomain);
+  const canPrepare = canEditPreparationFocus(access, preparationDomain) && (canEditOverride ?? true);
   const [phase, setPhase] = useState<MeetingPhase>("Prepare");
 
   const meetingTitle = `${project.name} — stakeholder review`;
@@ -282,6 +283,7 @@ export default function ReviewSession({
         )}
       </div>
 
+      <fieldset disabled={!canPrepare} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       {phase === "Prepare" && !canPrepare && (
         <MessageBar intent="info"><MessageBarBody>
           {preparationDomain} preparation is read-only for your role.
@@ -633,6 +635,7 @@ export default function ReviewSession({
           {assessmentTab.render(() => setPhase("Review meeting"))}
         </div>
       )}
+      </fieldset>
     </section>
   );
 }

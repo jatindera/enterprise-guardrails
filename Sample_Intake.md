@@ -60,7 +60,7 @@ Utilizing the Agent 365 SDK will allow DuPont to validate and operationalize a c
 | Field | Value |
 |---|---|
 | Security Assessment Required | yes |
-| Security Resource Assigned | Christina Kelly |
+| Security Resource Assigned | rishabarora@raspbians.com |
 | Security Risk Rating | Not provided |
 | Security Assessment Status | Not provided (placeholder: Find items) |
 | Security Assessment Link (must be a valid URL) | Not provided |
@@ -92,7 +92,7 @@ Scoring ranges:
 | Architecture Assessment Required | Yes |
 | Architecture Review Board (ARB) required | No |
 | Architecture Assessment Complete Date | Not provided |
-| Architect Assigned | Jatinder Arora |
+| Architect Assigned | testuser-ea@raspbians.com |
 | Architecture Assessment Status | In Progress |
 | Architecture Assessment Link (must be a valid URL) | Not provided (placeholder: https://) |
 | Comments | Not provided |

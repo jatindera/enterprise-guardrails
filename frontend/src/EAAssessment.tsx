@@ -23,12 +23,14 @@ import type {
 
 interface EAAssessmentProps {
   project: Project;
+  readOnly?: boolean;
   acceptedReview: AcceptedMeetingReview | null;
   onOpenReviewSession: () => void;
 }
 
 export default function EAAssessment({
   project,
+  readOnly = false,
   acceptedReview,
   onOpenReviewSession,
 }: EAAssessmentProps) {
@@ -41,7 +43,7 @@ export default function EAAssessment({
   const [dueDate, setDueDate] = useState("");
 
   useEffect(() => {
-    if (items.length === 0) return;
+    if (readOnly || items.length === 0) return;
 
     updateProject({
       eaItems: items.map((item) => ({
@@ -49,7 +51,7 @@ export default function EAAssessment({
         owner: project.assignedEA,
       })),
     });
-  }, [items, project.assignedEA, updateProject]);
+  }, [items, project.assignedEA, updateProject, readOnly]);
   const [description, setDescription] = useState("");
   const [message, setMessage] = useState("");
 

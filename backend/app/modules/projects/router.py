@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import current_user, require_admin
 from app.db.session import get_session
 from app.modules.projects import service
+from app.modules.projects.ea_assignment_router import graph_resolver
 from app.modules.projects.schemas import ImportProject, ProjectDetail, ProjectPage, UpdateRAIAssignment
 
 
@@ -23,8 +24,8 @@ def list_projects(
 
 
 @router.post("/import", response_model=ProjectDetail, dependencies=[Depends(require_admin)])
-def import_project(data: ImportProject, response: Response, session: DatabaseSession) -> ProjectDetail:
-    result, created = service.import_project(session, data)
+def import_project(data: ImportProject, response: Response, session: DatabaseSession, resolver=Depends(graph_resolver)) -> ProjectDetail:
+    result, created = service.import_project(session, data, resolver)
     response.status_code = 201 if created else 200
     return result
 

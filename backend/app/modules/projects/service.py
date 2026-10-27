@@ -6,6 +6,8 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.db.models import Project, ProjectIntakeSnapshot
 from app.modules.projects.intake_fields import reviewer_from_intake
+from app.modules.projects.architect_upn import architect_upn_from_intake, AmbiguousArchitect
+from app.modules.projects.ea_assignment import _resolve
 from app.modules.projects.schemas import (
     ImportProject, IntakeSource, ProjectDetail, ProjectPage, ProjectSummary, UpdateRAIAssignment,
 )
@@ -49,9 +51,16 @@ def get_project(session: Session, demand_id: str) -> ProjectDetail:
     return project_detail(session, project)
 
 
-def import_project(session: Session, data: ImportProject) -> tuple[ProjectDetail, bool]:
+def import_project(session: Session, data: ImportProject, resolver=None) -> tuple[ProjectDetail, bool]:
     ea_from_intake = reviewer_from_intake(data.markdown, "Architect Assigned")
     security_from_intake = reviewer_from_intake(data.markdown, "Security Resource Assigned")
+    try:
+        architect = architect_upn_from_intake(data.markdown)
+    except AmbiguousArchitect:
+        raise HTTPException(422, "The intake contains multiple architect emails.") from None
+    # Resolve before opening a database transaction. A failed directory lookup
+    # aborts the import; it never commits a partially bound identity.
+    resolved_ea = _resolve(resolver, architect.upn) if architect.upn and resolver else None
     try:
         # Any failure rolls back BOTH the core change and intake snapshot.
         with session.begin():
@@ -77,17 +86,31 @@ def import_project(session: Session, data: ImportProject) -> tuple[ProjectDetail
                     assigned_ea=ea_from_intake if ea_from_intake is not None else (data.assigned_ea or "Not assigned"),
                     assigned_security=security_from_intake or "Not assigned",
                     assigned_rai="Chris Cawthon",
+                    assigned_ea_object_id=resolved_ea,
                 )
                 session.add(project)
             else:
                 project.name = data.name
                 if data.business_function is not None:
                     project.business_function = data.business_function
-                if ea_from_intake is not None:
-                    project.assigned_ea = ea_from_intake
-                elif data.assigned_ea is not None:
-                    project.assigned_ea = data.assigned_ea
+                new_assigned_ea = (
+                    ea_from_intake
+                    if ea_from_intake is not None
+                    else data.assigned_ea
+                )
+
+                if new_assigned_ea is not None:
+                    if new_assigned_ea.strip().casefold() != project.assigned_ea.strip().casefold():
+                        # The previous object ID must not remain attached
+                        # to a newly assigned architect.
+                        project.assigned_ea_object_id = None
+
+                    project.assigned_ea = new_assigned_ea
+                if architect.present:
+                    project.assigned_ea_object_id = resolved_ea
                 if security_from_intake is not None:
+                    # Re-resolve on every explicit assignment, including changed mailto targets.
+                    project.assigned_security_object_id = None
                     project.assigned_security = security_from_intake
                 # RAI is managed here by Admin, never replaced by intake.
                 # Even identical reimports add a snapshot and advance revision.

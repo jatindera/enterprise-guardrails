@@ -300,9 +300,9 @@ export default function ArchitectureDiagrams({
                   </p>
 
                   <div className="meeting-review-actions">
-                    <Button onClick={() => downloadDiagram(diagram)}>
+                    <a href="#" onClick={(event) => { event.preventDefault(); downloadDiagram(diagram); }}>
                       Download
-                    </Button>
+                    </a>
 
                     <Button
                       appearance={isCurrent ? "secondary" : "primary"}

@@ -11,6 +11,7 @@ from app.core.config import Settings
 
 APP_ROLES = frozenset({
     "Admin", "enterprise-architect", "security-engineer", "rai-manager", "general-users",
+    "arb-core-team",
 })
 bearer = HTTPBearer(auto_error=False)
 

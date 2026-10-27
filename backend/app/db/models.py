@@ -60,6 +60,14 @@ class Project(Base):
         nullable=False,
     )
 
+    # These fields are populated only after a verified Entra lookup.
+    assigned_security_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    additional_security_email: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    additional_security_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    assigned_ea_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    additional_ea_email: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    additional_ea_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+
     assigned_security: Mapped[str] = mapped_column(
         Unicode(320), nullable=False, default="Not assigned", server_default="Not assigned",
     )

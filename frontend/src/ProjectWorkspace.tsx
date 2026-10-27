@@ -1,6 +1,10 @@
 import ProjectReviewers from "./ProjectReviewers";
 import { gateIsCurrent } from "./projectWorkflow";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getEAAccess } from "./api/projects";
+import type { EAAccess } from "./api/projects";
+import { useProjectUpdate } from "./ProjectUpdates";
+import EAAccessPanel from "./EAAccessPanel";
 
 import {
   Badge,
@@ -68,6 +72,23 @@ function ProjectWorkspaceContent({
   onBack,
   onSaveRAIAssignment,
 }: ProjectWorkspaceProps) {
+  const updateProject = useProjectUpdate(project.demandId);
+  const [eaAccess, setEAAccess] = useState<EAAccess | null>(null);
+  const [eaAccessError, setEAAccessError] = useState("");
+  const [eaAccessAttempt, setEAAccessAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setEAAccess(null);
+    setEAAccessError("");
+    void getEAAccess(project.demandId).then((value) => {
+      if (active) setEAAccess(value);
+    }).catch(() => { if (active) setEAAccessError("Could not check EA access. Please retry."); });
+    return () => { active = false; };
+  }, [project.demandId, project.revision, eaAccessAttempt]);
+  function onEAAccessUpdated(value: EAAccess) {
+    setEAAccess(value);
+    updateProject({ revision: value.revision });
+  }
   const [section, setSection] =
     useState<WorkspaceSection>("Overview");
 
@@ -334,15 +355,18 @@ function ProjectWorkspaceContent({
 
       {/* Keep screens mounted to preserve state across tabs. */}
       <div hidden={section !== "EA assessment"}>
+        <EAAccessPanel project={project} access={eaAccess} onUpdated={onEAAccessUpdated} error={eaAccessError} onRetry={() => setEAAccessAttempt((n) => n + 1)} />
         <ReviewSession
           project={project}
           preparationDomain="EA"
+          canEditOverride={eaAccess?.canEdit === true && eaAccess.revision === project.revision}
           onAcceptedReviewChange={setAcceptedReview}
           assessmentTab={{
             label: "EA assessment",
             render: (openReviewMeeting) => (
               <EAAssessment
                 project={project}
+                readOnly={!(eaAccess?.canEdit === true && eaAccess.revision === project.revision)}
                 acceptedReview={acceptedReview}
                 onOpenReviewSession={openReviewMeeting}
               />
