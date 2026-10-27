@@ -33,7 +33,7 @@ def _resolve(resolver, upn):
 
 def _view(project, user):
     edit, manage = security_permissions(user, project.assigned_security_object_id, project.additional_security_object_id)
-    return {"canEdit": edit, "canManageAdditional": manage,
+    return {"canEdit": edit, "canManageAdditional": manage, "canClose": manage,
             "additionalEmail": project.additional_security_email, "revision": project.revision,
             "primaryResolved": project.assigned_security_object_id is not None}
 

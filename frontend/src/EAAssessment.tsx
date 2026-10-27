@@ -24,6 +24,7 @@ import type {
 interface EAAssessmentProps {
   project: Project;
   readOnly?: boolean;
+  canClose?: boolean;
   acceptedReview: AcceptedMeetingReview | null;
   onOpenReviewSession: () => void;
 }
@@ -31,6 +32,7 @@ interface EAAssessmentProps {
 export default function EAAssessment({
   project,
   readOnly = false,
+  canClose = false,
   acceptedReview,
   onOpenReviewSession,
 }: EAAssessmentProps) {
@@ -128,6 +130,7 @@ export default function EAAssessment({
   }
 
   function closeItem(id: string) {
+    if (!canClose || readOnly) return;
     const item = items.find((entry) => entry.id === id);
 
     if (!item || !item.description.trim()) {
@@ -381,7 +384,7 @@ export default function EAAssessment({
                   {item.status === "Open" ? (
                     <Button
                       appearance="primary"
-                      disabled={!item.description.trim()}
+                      disabled={!canClose || !item.description.trim()}
                       onClick={() => closeItem(item.id)}
                     >
                       Mark closed
@@ -409,6 +412,7 @@ export default function EAAssessment({
       />
 
       <EAApprovalReport
+        canClose={canClose}
         key={`ea-report-${project.demandId}`}
         project={project}
         items={items}

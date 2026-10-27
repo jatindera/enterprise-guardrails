@@ -15,6 +15,8 @@ import type { Project } from "./types";
 
 interface SecurityRecordProps {
   project: Project;
+  canClose: boolean;
+  readOnly: boolean;
 }
 
 type SecurityDecision =
@@ -60,6 +62,8 @@ interface DecisionRecord {
 
 export default function SecurityRecord({
   project,
+  canClose,
+  readOnly,
 }: SecurityRecordProps) {
   const updateProject = useProjectUpdate(project.demandId);
   const reportInput = useRef<HTMLInputElement>(null);
@@ -92,13 +96,13 @@ export default function SecurityRecord({
   const latestDecision = records[records.length - 1];
 
   useEffect(() => {
-    if (conditions.length === 0) return;
+    if (readOnly || conditions.length === 0) return;
     updateProject({
       securityConditions: conditions.map((condition) => ({
         ...condition,
       })),
     });
-  }, [conditions, updateProject]);
+  }, [conditions, updateProject, readOnly]);
 
   function attachFile(
     file: File | undefined,
@@ -194,6 +198,7 @@ export default function SecurityRecord({
   }
 
   function closeCondition(id: string) {
+    if (!canClose || readOnly) return;
     const condition = conditions.find((item) => item.id === id);
 
     if (!reviewer.trim()) {
@@ -315,7 +320,7 @@ export default function SecurityRecord({
           Security’s existing application remains the official system.
           Store copies of its evidence and decisions here. Files and
           records are held in memory and clear
-          when the page is refreshed. Permissions are not enforced yet.
+          when the page is refreshed. Assessment and closure permissions must be enforced by the backend when persistence is added.
         </MessageBarBody>
       </MessageBar>
 
@@ -593,7 +598,7 @@ export default function SecurityRecord({
                   </>
                 ) : (
                   <Button
-                    disabled={!reviewer.trim() || !condition.comments.trim()}
+                    disabled={!canClose || !reviewer.trim() || !condition.comments.trim()}
                     onClick={() => closeCondition(condition.id)}
                   >
                     Close locally as assigned reviewer
@@ -604,9 +609,8 @@ export default function SecurityRecord({
           })}
 
           <p className="workspace-secondary">
-            The assigned Security reviewer is the closure authority.
-            This prototype records the entered name; authenticated
-            reviewer-only closure will be enforced by the backend.
+            The assigned Security reviewer or Admin can close a condition.
+            This is a local prototype; backend closure enforcement is pending.
           </p>
         </div>
       </section>

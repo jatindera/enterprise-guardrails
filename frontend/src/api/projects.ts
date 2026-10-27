@@ -95,6 +95,7 @@ export function getProject(demandId: string): Promise<ProjectRecord> {
 export interface EAAccess {
   canEdit: boolean;
   canManageAdditional: boolean;
+  canClose: boolean;
   additionalEmail: string | null;
   primaryResolved: boolean;
   revision: number;
@@ -112,6 +113,24 @@ export function resolvePrimaryEA(demandId: string, expectedRevision: number): Pr
 
 export function saveAdditionalEA(demandId: string, email: string | null, expectedRevision: number): Promise<EAAccess> {
   return request<EAAccess>(`/api/projects/${encodeURIComponent(demandId)}/additional-ea`, {
+    method: "PATCH", body: JSON.stringify({ email, expectedRevision }),
+  });
+}
+
+export interface SecurityAccess extends EAAccess {}
+
+export function getSecurityAccess(demandId: string): Promise<SecurityAccess> {
+  return request<SecurityAccess>(`/api/projects/${encodeURIComponent(demandId)}/security-access`);
+}
+
+export function resolvePrimarySecurity(demandId: string, expectedRevision: number): Promise<SecurityAccess> {
+  return request<SecurityAccess>(`/api/projects/${encodeURIComponent(demandId)}/security-primary-resolution`, {
+    method: "POST", body: JSON.stringify({ expectedRevision }),
+  });
+}
+
+export function saveAdditionalSecurity(demandId: string, email: string | null, expectedRevision: number): Promise<SecurityAccess> {
+  return request<SecurityAccess>(`/api/projects/${encodeURIComponent(demandId)}/additional-security`, {
     method: "PATCH", body: JSON.stringify({ email, expectedRevision }),
   });
 }

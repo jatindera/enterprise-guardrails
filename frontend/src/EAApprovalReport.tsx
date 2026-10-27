@@ -24,6 +24,7 @@ interface ReportItem {
 }
 
 interface EAApprovalReportProps {
+  canClose: boolean;
   project: Project;
   items: ReportItem[];
   currentDiagram: CurrentDiagramReference | null;
@@ -45,6 +46,7 @@ interface ReportSnapshot {
 }
 
 export default function EAApprovalReport({
+  canClose,
   project,
   items,
   currentDiagram,
@@ -70,6 +72,7 @@ export default function EAApprovalReport({
   ).length;
 
   function saveReport() {
+    if (!canClose) return;
     if (!summary.trim() || !complexity || !decision) {
       setError("Enter a summary, complexity, and decision.");
       return;
@@ -279,7 +282,7 @@ export default function EAApprovalReport({
           />
         </label>
 
-        <Button appearance="primary" onClick={saveReport}>
+        <Button appearance="primary" disabled={!canClose} onClick={saveReport}>
           Save local report snapshot
         </Button>
 

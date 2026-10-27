@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Path, Query, Response, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth import current_user, require_admin
@@ -24,8 +24,8 @@ def list_projects(
 
 
 @router.post("/import", response_model=ProjectDetail, dependencies=[Depends(require_admin)])
-def import_project(data: ImportProject, response: Response, session: DatabaseSession, resolver=Depends(graph_resolver)) -> ProjectDetail:
-    result, created = service.import_project(session, data, resolver)
+def import_project(data: ImportProject, response: Response, request: Request, session: DatabaseSession, resolver=Depends(graph_resolver)) -> ProjectDetail:
+    result, created = service.import_project(session, data, resolver, request.app.state.token_verifier.settings.default_rai_upn)
     response.status_code = 201 if created else 200
     return result
 
@@ -43,5 +43,6 @@ def update_rai_assignment(
     demand_id: Annotated[str, Path(pattern=r"^[0-9]{1,64}$")],
     data: UpdateRAIAssignment,
     session: DatabaseSession,
+    resolver=Depends(graph_resolver),
 ) -> ProjectDetail:
-    return service.update_rai_assignment(session, demand_id, data)
+    return service.update_rai_assignment(session, demand_id, data, resolver)

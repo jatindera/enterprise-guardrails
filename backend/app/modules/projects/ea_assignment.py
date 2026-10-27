@@ -33,7 +33,7 @@ def _resolve(resolver, upn):
 
 def _view(project, user):
     edit, manage = ea_permissions(user, project.assigned_ea_object_id, project.additional_ea_object_id)
-    return {"canEdit": edit, "canManageAdditional": manage,
+    return {"canEdit": edit, "canManageAdditional": manage, "canClose": manage,
             "additionalEmail": project.additional_ea_email, "revision": project.revision,
             "primaryResolved": project.assigned_ea_object_id is not None}
 

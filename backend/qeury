@@ -1,0 +1,18 @@
+
+----query for unresolved identities
+SELECT
+    demand_id,
+    name AS project_name,
+    assigned_ea,
+    assigned_ea_object_id,
+    assigned_security,
+    assigned_security_object_id
+FROM dbo.projects
+WHERE assigned_ea_object_id IS NULL
+   OR assigned_security_object_id IS NULL
+ORDER BY demand_id;
+
+--------check RAI manager
+SELECT demand_id, name, assigned_rai, assigned_rai_object_id
+FROM dbo.projects
+WHERE demand_id = 'YOUR_DEMAND_ID';

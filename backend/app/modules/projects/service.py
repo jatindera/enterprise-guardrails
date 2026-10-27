@@ -1,3 +1,4 @@
+import logging
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -7,6 +8,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.db.models import Project, ProjectIntakeSnapshot
 from app.modules.projects.intake_fields import reviewer_from_intake
 from app.modules.projects.architect_upn import architect_upn_from_intake, AmbiguousArchitect
+from app.modules.projects.security_upn import security_upn_from_intake, AmbiguousSecurity
 from app.modules.projects.ea_assignment import _resolve
 from app.modules.projects.schemas import (
     ImportProject, IntakeSource, ProjectDetail, ProjectPage, ProjectSummary, UpdateRAIAssignment,
@@ -51,16 +53,36 @@ def get_project(session: Session, demand_id: str) -> ProjectDetail:
     return project_detail(session, project)
 
 
-def import_project(session: Session, data: ImportProject, resolver=None) -> tuple[ProjectDetail, bool]:
+logger = logging.getLogger("guardrails.assignments")
+
+def _try_resolve_import(resolver, upn, domain, demand_id):
+    if not upn or resolver is None:
+        logger.warning("Identity unresolved for %s reviewer of demand %s: missing email or resolver", domain, demand_id)
+        return None
+    try:
+        return _resolve(resolver, upn)
+    except HTTPException as exc:
+        logger.warning("Identity unresolved for %s reviewer of demand %s: %s", domain, demand_id, exc.detail)
+        return None
+
+def import_project(session: Session, data: ImportProject, resolver=None, default_rai_upn="") -> tuple[ProjectDetail, bool]:
     ea_from_intake = reviewer_from_intake(data.markdown, "Architect Assigned")
     security_from_intake = reviewer_from_intake(data.markdown, "Security Resource Assigned")
     try:
         architect = architect_upn_from_intake(data.markdown)
     except AmbiguousArchitect:
         raise HTTPException(422, "The intake contains multiple architect emails.") from None
-    # Resolve before opening a database transaction. A failed directory lookup
-    # aborts the import; it never commits a partially bound identity.
-    resolved_ea = _resolve(resolver, architect.upn) if architect.upn and resolver else None
+    try:
+        security = security_upn_from_intake(data.markdown)
+    except AmbiguousSecurity:
+        raise HTTPException(422, "The intake contains multiple security reviewer emails.") from None
+    # Identity lookup happens before the database transaction. An unresolved
+    # identity never grants access; the project can still be imported.
+    resolved_ea = _try_resolve_import(resolver, architect.upn, "EA", data.demand_id) if architect.present else None
+    resolved_security = _try_resolve_import(resolver, security.upn, "Security", data.demand_id) if security.present else None
+    # The configured default applies only to new projects, never overwrites a
+    # project-specific RAI assignment during a later reimport.
+    resolved_default_rai = _try_resolve_import(resolver, default_rai_upn.strip(), "RAI", data.demand_id) if default_rai_upn.strip() else None
     try:
         # Any failure rolls back BOTH the core change and intake snapshot.
         with session.begin():
@@ -85,8 +107,10 @@ def import_project(session: Session, data: ImportProject, resolver=None) -> tupl
                     business_function=data.business_function or "Not provided",
                     assigned_ea=ea_from_intake if ea_from_intake is not None else (data.assigned_ea or "Not assigned"),
                     assigned_security=security_from_intake or "Not assigned",
-                    assigned_rai="Chris Cawthon",
+                    assigned_rai=default_rai_upn.strip() or "Chris Cawthon",
+                    assigned_rai_object_id=resolved_default_rai,
                     assigned_ea_object_id=resolved_ea,
+                    assigned_security_object_id=resolved_security,
                 )
                 session.add(project)
             else:
@@ -109,8 +133,8 @@ def import_project(session: Session, data: ImportProject, resolver=None) -> tupl
                 if architect.present:
                     project.assigned_ea_object_id = resolved_ea
                 if security_from_intake is not None:
-                    # Re-resolve on every explicit assignment, including changed mailto targets.
-                    project.assigned_security_object_id = None
+                    # A failed lookup clears any prior binding, rather than retaining stale access.
+                    project.assigned_security_object_id = resolved_security
                     project.assigned_security = security_from_intake
                 # RAI is managed here by Admin, never replaced by intake.
                 # Even identical reimports add a snapshot and advance revision.
@@ -146,7 +170,10 @@ def import_project(session: Session, data: ImportProject, resolver=None) -> tupl
         raise
 
 
-def update_rai_assignment(session: Session, demand_id: str, data: UpdateRAIAssignment) -> ProjectDetail:
+def update_rai_assignment(session: Session, demand_id: str, data: UpdateRAIAssignment, resolver=None) -> ProjectDetail:
+    # Resolve a changed sign-in email before beginning the transaction.
+    upn = data.assigned_rai.strip()
+    resolved = _try_resolve_import(resolver, upn, "RAI", demand_id) if "@" in upn else None
     try:
         with session.begin():
             project = session.scalar(select(Project).where(Project.demand_id == demand_id))
@@ -156,6 +183,7 @@ def update_rai_assignment(session: Session, demand_id: str, data: UpdateRAIAssig
                 raise HTTPException(409, "Project changed. Cancel editing, return to the portfolio, reload it, and reopen the project before retrying.")
             if project.assigned_rai != data.assigned_rai:
                 project.assigned_rai = data.assigned_rai
+                project.assigned_rai_object_id = resolved
                 session.flush()  # SQLAlchemy version checking also catches concurrent writes.
             result = project_detail(session, project)
         return result

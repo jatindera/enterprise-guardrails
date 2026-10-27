@@ -22,11 +22,11 @@ class EAAdditional(EARevision):
 
 def graph_resolver(request: Request):
     settings = request.app.state.token_verifier.settings
-    if settings.environment == "local":
-        credential = AzureCliCredential(tenant_id=settings.entra_tenant_id)
-    else:
-        credential = ManagedIdentityCredential(client_id=settings.graph_managed_identity_client_id)
     def lookup(upn):
+        if settings.environment == "local":
+            credential = AzureCliCredential(tenant_id=settings.entra_tenant_id)
+        else:
+            credential = ManagedIdentityCredential(client_id=settings.graph_managed_identity_client_id)
         try:
             return resolve_upn(upn, credential)
         finally:

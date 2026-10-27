@@ -1,10 +1,11 @@
 import ProjectReviewers from "./ProjectReviewers";
 import { gateIsCurrent } from "./projectWorkflow";
 import { useEffect, useState } from "react";
-import { getEAAccess } from "./api/projects";
-import type { EAAccess } from "./api/projects";
+import { getEAAccess, getSecurityAccess } from "./api/projects";
+import type { EAAccess, SecurityAccess } from "./api/projects";
 import { useProjectUpdate } from "./ProjectUpdates";
 import EAAccessPanel from "./EAAccessPanel";
+import SecurityAccessPanel from "./SecurityAccessPanel";
 
 import {
   Badge,
@@ -89,6 +90,25 @@ function ProjectWorkspaceContent({
     setEAAccess(value);
     updateProject({ revision: value.revision });
   }
+  const [securityAccess, setSecurityAccess] = useState<SecurityAccess | null>(null);
+  const [securityAccessError, setSecurityAccessError] = useState("");
+  const [securityAccessAttempt, setSecurityAccessAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setSecurityAccess(null);
+    setSecurityAccessError("");
+    void getSecurityAccess(project.demandId).then((value) => {
+      if (active) setSecurityAccess(value);
+    }).catch(() => { if (active) setSecurityAccessError("Could not check Security access. Please retry."); });
+    return () => { active = false; };
+  }, [project.demandId, project.revision, securityAccessAttempt]);
+  function onSecurityAccessUpdated(value: SecurityAccess) {
+    setSecurityAccess(value);
+    updateProject({ revision: value.revision });
+  }
+  const securityAccessCurrent = securityAccess?.revision === project.revision;
+  const canEditSecurity = securityAccessCurrent && securityAccess?.canEdit === true;
+  const canCloseSecurity = securityAccessCurrent && securityAccess?.canClose === true;
   const [section, setSection] =
     useState<WorkspaceSection>("Overview");
 
@@ -367,6 +387,7 @@ function ProjectWorkspaceContent({
               <EAAssessment
                 project={project}
                 readOnly={!(eaAccess?.canEdit === true && eaAccess.revision === project.revision)}
+                canClose={eaAccess?.canClose === true && eaAccess.revision === project.revision}
                 acceptedReview={acceptedReview}
                 onOpenReviewSession={openReviewMeeting}
               />
@@ -376,13 +397,15 @@ function ProjectWorkspaceContent({
       </div>
 
       <div hidden={section !== "Security record"}>
+        <SecurityAccessPanel project={project} access={securityAccess} onUpdated={onSecurityAccessUpdated} error={securityAccessError} onRetry={() => setSecurityAccessAttempt((n) => n + 1)} />
         <ReviewSession
           project={project}
           preparationDomain="Security"
+          canEditOverride={canEditSecurity}
           onAcceptedReviewChange={setSecurityAcceptedReview}
           assessmentTab={{
             label: "Security assessment",
-            render: () => <SecurityRecord project={project} />,
+            render: () => <SecurityRecord project={project} canClose={canCloseSecurity} readOnly={!canEditSecurity} />,
           }}
         />
       </div>
