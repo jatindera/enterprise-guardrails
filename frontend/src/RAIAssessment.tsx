@@ -15,6 +15,8 @@ import type { Project } from "./types";
 
 interface RAIAssessmentProps {
   project: Project;
+  canClose: boolean;
+  readOnly: boolean;
 }
 
 type RAIRisk = "Low" | "Medium" | "High";
@@ -60,6 +62,8 @@ interface RAISnapshot {
 
 export default function RAIAssessment({
   project,
+  canClose,
+  readOnly,
 }: RAIAssessmentProps) {
   const updateProject = useProjectUpdate(project.demandId);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -86,13 +90,13 @@ export default function RAIAssessment({
   const latestDecision = records[records.length - 1];
 
   useEffect(() => {
-    if (conditions.length === 0) return;
+    if (readOnly || conditions.length === 0) return;
     updateProject({
       raiConditions: conditions.map((condition) => ({
         ...condition,
       })),
     });
-  }, [conditions, updateProject]);
+  }, [conditions, updateProject, readOnly]);
 
   const openCount = conditions.filter(
     (condition) => condition.status === "Open"
@@ -198,6 +202,7 @@ export default function RAIAssessment({
   }
 
   function closeCondition(id: string) {
+    if (!canClose || readOnly) return;
     clearFeedback();
 
     const condition = conditions.find((item) => item.id === id);
@@ -626,7 +631,7 @@ export default function RAIAssessment({
                 ) : (
                   <Button
                     disabled={
-                      !reviewer.trim() || !condition.comments.trim()
+                      !canClose || !reviewer.trim() || !condition.comments.trim()
                     }
                     onClick={() => closeCondition(condition.id)}
                   >
@@ -638,9 +643,8 @@ export default function RAIAssessment({
           })}
 
           <p className="workspace-secondary">
-            Closure records the entered RAI manager name in this
-            prototype. Backend integration will authenticate and
-            enforce closure permissions.
+            The assigned RAI reviewer or Admin can close a condition.
+            Closure is local; backend enforcement awaits persistence.
           </p>
         </div>
       </section>

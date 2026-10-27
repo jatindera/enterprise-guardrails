@@ -135,6 +135,24 @@ export function saveAdditionalSecurity(demandId: string, email: string | null, e
   });
 }
 
+export interface RAIAccess extends EAAccess {}
+
+export function getRAIAccess(demandId: string): Promise<RAIAccess> {
+  return request<RAIAccess>(`/api/projects/${encodeURIComponent(demandId)}/rai-access`);
+}
+
+export function resolvePrimaryRAI(demandId: string, expectedRevision: number): Promise<RAIAccess> {
+  return request<RAIAccess>(`/api/projects/${encodeURIComponent(demandId)}/rai-primary-resolution`, {
+    method: "POST", body: JSON.stringify({ expectedRevision }),
+  });
+}
+
+export function saveAdditionalRAI(demandId: string, email: string | null, expectedRevision: number): Promise<RAIAccess> {
+  return request<RAIAccess>(`/api/projects/${encodeURIComponent(demandId)}/additional-rai`, {
+    method: "PATCH", body: JSON.stringify({ email, expectedRevision }),
+  });
+}
+
 export function importProject(draft: IntakeDraft): Promise<ProjectRecord> {
   return request<ProjectRecord>("/api/projects/import", {
     method: "POST",

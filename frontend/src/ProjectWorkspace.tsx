@@ -1,11 +1,12 @@
 import ProjectReviewers from "./ProjectReviewers";
 import { gateIsCurrent } from "./projectWorkflow";
 import { useEffect, useState } from "react";
-import { getEAAccess, getSecurityAccess } from "./api/projects";
-import type { EAAccess, SecurityAccess } from "./api/projects";
+import { getEAAccess, getSecurityAccess, getRAIAccess } from "./api/projects";
+import type { EAAccess, SecurityAccess, RAIAccess } from "./api/projects";
 import { useProjectUpdate } from "./ProjectUpdates";
 import EAAccessPanel from "./EAAccessPanel";
 import SecurityAccessPanel from "./SecurityAccessPanel";
+import RAIAccessPanel from "./RAIAccessPanel";
 
 import {
   Badge,
@@ -109,6 +110,25 @@ function ProjectWorkspaceContent({
   const securityAccessCurrent = securityAccess?.revision === project.revision;
   const canEditSecurity = securityAccessCurrent && securityAccess?.canEdit === true;
   const canCloseSecurity = securityAccessCurrent && securityAccess?.canClose === true;
+  const [raiAccess, setRAIAccess] = useState<RAIAccess | null>(null);
+  const [raiAccessError, setRAIAccessError] = useState("");
+  const [raiAccessAttempt, setRAIAccessAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setRAIAccess(null);
+    setRAIAccessError("");
+    void getRAIAccess(project.demandId).then((value) => {
+      if (active) setRAIAccess(value);
+    }).catch(() => { if (active) setRAIAccessError("Could not check RAI access. Please retry."); });
+    return () => { active = false; };
+  }, [project.demandId, project.revision, raiAccessAttempt]);
+  function onRAIAccessUpdated(value: RAIAccess) {
+    setRAIAccess(value);
+    updateProject({ revision: value.revision });
+  }
+  const raiAccessCurrent = raiAccess?.revision === project.revision;
+  const canEditRAI = raiAccessCurrent && raiAccess?.canEdit === true;
+  const canCloseRAI = raiAccessCurrent && raiAccess?.canClose === true;
   const [section, setSection] =
     useState<WorkspaceSection>("Overview");
 
@@ -411,19 +431,21 @@ function ProjectWorkspaceContent({
       </div>
 
       <div hidden={section !== "RAI assessment"}>
+        <RAIAccessPanel project={project} access={raiAccess} onUpdated={onRAIAccessUpdated} error={raiAccessError} onRetry={() => setRAIAccessAttempt((n) => n + 1)} />
         <ReviewSession
           project={project}
           preparationDomain="RAI"
+          canEditOverride={canEditRAI}
           onAcceptedReviewChange={setRAIAcceptedReview}
           assessmentTab={{
             label: "RAI assessment",
-            render: () => <RAIAssessment project={project} />,
+            render: () => <RAIAssessment project={project} canClose={canCloseRAI} readOnly={!canEditRAI} />,
           }}
         />
       </div>
 
       <div hidden={section !== "ARB review"}>
-        <ARBReview project={project} />
+        <ARBReview project={project} canEditDocuments={eaAccess?.canEdit === true && eaAccess.revision === project.revision} />
       </div>
 
       <div hidden={section !== "Production gate"}>

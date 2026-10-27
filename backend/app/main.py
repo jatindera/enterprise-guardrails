@@ -1,5 +1,6 @@
 # keep following at top of file to avoid circular imports
 from app.modules.projects.security_assignment_router import router as security_assignment_router
+from app.modules.projects.rai_assignment_router import router as rai_assignment_router
 from app.modules.projects.router import router as projects_router
 from app.modules.projects.ea_assignment_router import router as ea_assignment_router
 
@@ -67,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(projects_router)
     application.include_router(ea_assignment_router)
     application.include_router(security_assignment_router)
+    application.include_router(rai_assignment_router)
 
     @application.get("/api/auth/me", tags=["Authentication"])
     def auth_me(user: Annotated[dict, Depends(current_user)]) -> dict:

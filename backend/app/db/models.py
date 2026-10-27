@@ -62,6 +62,8 @@ class Project(Base):
 
     # These fields are populated only after a verified Entra lookup.
     assigned_rai_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    additional_rai_email: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    additional_rai_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     assigned_security_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     additional_security_email: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
     additional_security_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)

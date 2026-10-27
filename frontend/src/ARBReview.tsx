@@ -1,5 +1,6 @@
 import { useProjectUpdate } from "./ProjectUpdates";
 import { useState } from "react";
+import { useAuth } from "./auth/AuthGate";
 
 import {
   Badge,
@@ -15,6 +16,7 @@ import type { Project } from "./types";
 
 interface ARBReviewProps {
   project: Project;
+  canEditDocuments: boolean;
 }
 
 type ArtifactKind =
@@ -55,7 +57,8 @@ const documentGroups: {
 
 
 
-export default function ARBReview({ project }: ARBReviewProps) {
+export default function ARBReview({ project, canEditDocuments }: ARBReviewProps) {
+  const canVote = useAuth().roles.includes("arb-core-team");
   const updateProject = useProjectUpdate(project.demandId);
   // Retain the initial applicability during this workspace session.
   const [initiallyRequired] = useState(
@@ -76,7 +79,7 @@ export default function ARBReview({ project }: ARBReviewProps) {
   const notApplicable = project.arbStatus === "Not applicable";
 
   function changeApplicability(checked: boolean) {
-    if (!initiallyRequired) return;
+    if (!initiallyRequired || !canEditDocuments) return;
 
     setError("");
     setMessage("");
@@ -118,18 +121,21 @@ export default function ARBReview({ project }: ARBReviewProps) {
   const [message, setMessage] = useState("");
 
   function previewInFavour() {
+    if (!canVote) return;
     setPreviewSelection(null);
     setPreviewError("");
     setPreviewVote({ choice: "For", at: new Date().toISOString() });
   }
 
   function previewAgainst() {
+    if (!canVote) return;
     if (!previewReason.trim()) { setPreviewError("Please enter a reason."); return; }
     setPreviewError("");
     setPreviewVote({ choice: "Against", at: new Date().toISOString() });
   }
 
   function attachFiles(files: File[], kind: ArtifactKind) {
+    if (!canEditDocuments) return;
     setError("");
     setMessage("");
 
@@ -213,7 +219,7 @@ export default function ARBReview({ project }: ARBReviewProps) {
 
       <MessageBar intent="info">
         <MessageBarBody>
-          Files are held locally and clear on refresh. ADR generation, role-based voting, and backend persistence await integration.
+          Documents and voting previews are local and clear on refresh. Backend authorization, voting, and ADR generation await integration.
         </MessageBarBody>
       </MessageBar>
 
@@ -233,7 +239,7 @@ export default function ARBReview({ project }: ARBReviewProps) {
           <Checkbox
             label="ARB is not applicable to this project"
             checked={notApplicable}
-            disabled={!initiallyRequired}
+            disabled={!initiallyRequired || !canEditDocuments}
             onChange={(_, data) =>
               changeApplicability(data.checked === true)
             }
@@ -261,6 +267,8 @@ export default function ARBReview({ project }: ARBReviewProps) {
         </div>
 
         <div hidden={activeTab !== "documents"}>
+        {!canEditDocuments && <p className="workspace-secondary">ADR documents are read-only for your account.</p>}
+        <fieldset disabled={!canEditDocuments} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <section className="content-panel arb-section">
           <div className="panel-heading">
             <h2>ADR & meeting documents</h2>
@@ -339,26 +347,27 @@ export default function ARBReview({ project }: ARBReviewProps) {
             </div>
           </div>
         </section>
-
+        </fieldset>
         </div>
         <div hidden={activeTab !== "vote"}>
           <section className="content-panel arb-section">
             <div className="workspace-panel-body">
+              {!canVote && <p className="workspace-secondary">Voting is available to ARB core team members.</p>}
               <div className="meeting-review-actions">
-                <Button appearance="primary" style={{ backgroundColor: "#168447", borderColor: "#168447", fontSize: "18px", padding: "12px 20px" }} onClick={previewInFavour}>
+                <Button disabled={!canVote} appearance="primary" style={{ backgroundColor: "#168447", borderColor: "#168447", fontSize: "18px", padding: "12px 20px" }} onClick={previewInFavour}>
                   Vote in Favour
                 </Button>
-                <Button appearance="primary" style={{ backgroundColor: "#bb3434", borderColor: "#bb3434", fontSize: "18px", padding: "12px 20px" }} onClick={() => { setPreviewSelection("Against"); setPreviewError(""); }}>
+                <Button disabled={!canVote} appearance="primary" style={{ backgroundColor: "#bb3434", borderColor: "#bb3434", fontSize: "18px", padding: "12px 20px" }} onClick={() => { setPreviewSelection("Against"); setPreviewError(""); }}>
                   Vote Against
                 </Button>
               </div>
               {previewSelection === "Against" && (
                 <div>
                   <label className="session-field">Reason for voting against (required)
-                    <Textarea value={previewReason} required rows={3} onChange={(_, data) => setPreviewReason(data.value)} />
+                    <Textarea disabled={!canVote} value={previewReason} required rows={3} onChange={(_, data) => setPreviewReason(data.value)} />
                   </label>
                   {previewError && <p role="alert">{previewError}</p>}
-                  <Button appearance="primary" onClick={previewAgainst}>Confirm vote against</Button>
+                  <Button disabled={!canVote} appearance="primary" onClick={previewAgainst}>Confirm vote against</Button>
                 </div>
               )}
               <div style={{ marginTop: "24px" }} aria-live="polite">
