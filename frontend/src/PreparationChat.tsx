@@ -1,11 +1,13 @@
 import {
   Badge,
   Button,
-  MessageBar,
-  MessageBarBody,
   Textarea,
 } from "@fluentui/react-components";
 
+import { useId } from "react";
+import "./PreparationChat.css";
+
+import type { PreparationScope } from "./auth/preparationAccess";
 import type { Project } from "./types";
 import type {
   PreparedQuestion,
@@ -30,12 +32,16 @@ interface PreparationChatProps {
   inputLabel?: string;
   emptyMessage?: string;
   footerText?: string;
+  disabled?: boolean;
+  scope?: PreparationScope;
+  allowedFocuses?: QuestionFocus[];
 }
 
 function buildDemoReply(
   prompt: string,
   project: Project,
   questions: PreparedQuestion[],
+  scope: PreparationScope,
 ): PreparationChatMessage {
   const text = prompt.toLowerCase();
 
@@ -79,6 +85,26 @@ function buildDemoReply(
       `For ${project.name}, which systems provide and receive data, and who owns each integration?`;
   }
 
+  if (scope !== "All" && focus !== scope) {
+    focus = scope;
+    const domainReply = {
+      EA: {
+        explanation: "For EA preparation, clarify the solution boundaries, integrations, ownership, and business impact.",
+        question: `For ${project.name}, which source and destination systems are in scope, who owns them, and what happens if an integration fails?`,
+      },
+      Security: {
+        explanation: "For Security preparation, confirm sensitive data, identities, access controls, and protection across the data flow.",
+        question: "What sensitive data is processed, who can access it, and how are identities, encryption, retention, and deletion controlled?",
+      },
+      RAI: {
+        explanation: "For RAI preparation, clarify how AI is used, possible harm, evaluations, and human oversight.",
+        question: "What actions or decisions depend on AI, what harm could incorrect outputs cause, and what testing and human oversight are planned?",
+      },
+    }[scope];
+    explanation = domainReply.explanation;
+    proposedText = domainReply.question;
+  }
+
   const alreadyListed = questions.some(
     (question) =>
       question.question.trim().toLowerCase() ===
@@ -89,7 +115,7 @@ function buildDemoReply(
     id: crypto.randomUUID(),
     role: "assistant",
     text:
-      `Demo response: ${explanation}` +
+      `${explanation}` +
       (alreadyListed
         ? " This proposed question is already in your preparation list."
         : ""),
@@ -100,6 +126,7 @@ function buildDemoReply(
       question: proposedText,
       reason: "Suggested during preparation chat; review before use.",
       selected: true,
+      source: "ai",
     },
   };
 }
@@ -112,16 +139,21 @@ export default function PreparationChat({
   onMessagesChange,
   onDraftChange,
   onAddQuestion,
+  disabled = false,
+  scope = "All",
+  allowedFocuses = ["Joint", "EA", "Security", "RAI"],
   inputLabel = "Ask the preparation assistant",
   emptyMessage =
   "Ask for clarification before adding a question. For example: “The vendor says they use SSO. What else should I ask?”",
   footerText =
   "Chat is held locally while the workspace remains open. Only questions you explicitly add enter the meeting question list.",
 }: PreparationChatProps) {
+  const inputId = useId();
+
   function sendMessage() {
     const prompt = draft.trim();
 
-    if (!prompt) {
+    if (disabled || !prompt) {
       return;
     }
 
@@ -131,7 +163,7 @@ export default function PreparationChat({
       text: prompt,
     };
 
-    const reply = buildDemoReply(prompt, project, questions);
+    const reply = buildDemoReply(prompt, project, questions, scope);
 
     onMessagesChange([...messages, userMessage, reply]);
     onDraftChange("");
@@ -146,92 +178,53 @@ export default function PreparationChat({
   }
 
   return (
-    <section className="preparation-chat">
-      <MessageBar intent="info">
-        <MessageBarBody>
-          Simulated replies — Foundry integration pending.
-          This demo uses keywords, not conversational reasoning
-          or verification of project facts.
-        </MessageBarBody>
-      </MessageBar>
-
-      <div
-        className="preparation-chat-messages"
-        role="log"
-        aria-label="Preparation conversation"
-        aria-live="polite"
-        tabIndex={0}
-      >
+    <section className="eg-chat" aria-label="Assistant conversation">
+      <div className="eg-chat-log" role="log" aria-label="Assistant conversation" aria-live="polite" tabIndex={0}>
         {messages.length === 0 && (
-          <p className="workspace-secondary">
-            {emptyMessage}
-          </p>
+          <div className="eg-chat-empty">
+            <span className="eg-chat-avatar" aria-hidden="true">💬</span>
+            <div><strong>How can I help?</strong><p>{emptyMessage}</p></div>
+          </div>
         )}
-
         {messages.map((message) => {
           const proposedQuestion = message.proposedQuestion;
-          const alreadyAdded = proposedQuestion
-            ? questionExists(proposedQuestion)
-            : false;
-
+          const alreadyAdded = proposedQuestion ? questionExists(proposedQuestion) : false;
           return (
-            <article
-              key={message.id}
-              className={`preparation-chat-message preparation-chat-message--${message.role}`}
-            >
-              <strong>
-                {message.role === "user" ? "You" : "AI assistant · Demo"}
-              </strong>
-
-              <p className="preparation-chat-text">
-                {message.text}
-              </p>
-
-              {proposedQuestion && (
-                <div className="preparation-chat-proposal">
-                  <Badge appearance="tint">
-                    {proposedQuestion.focus}
-                  </Badge>
-
-                  <p>{proposedQuestion.question}</p>
-
-                  <Button
-                    appearance="primary"
-                    disabled={alreadyAdded}
-                    onClick={() => onAddQuestion(proposedQuestion)}
-                  >
-                    {alreadyAdded
-                      ? "Already in question list"
-                      : "Add to meeting questions"}
-                  </Button>
-                </div>
-              )}
+            <article key={message.id} className={`eg-chat-row eg-chat-row--${message.role}`}>
+              {message.role === "assistant" && <span className="eg-chat-avatar" aria-hidden="true">💬</span>}
+              <div className={`eg-chat-bubble eg-chat-bubble--${message.role}`}>
+                <strong>{message.role === "user" ? "You" : "Assistant · sample reply"}</strong>
+                <p className="eg-chat-text">{message.text}</p>
+                {proposedQuestion && (
+                  <div className="eg-chat-proposal">
+                    <Badge appearance="tint">{proposedQuestion.focus}</Badge>
+                    <p>{proposedQuestion.question}</p>
+                    <Button appearance="primary"
+                      disabled={disabled || alreadyAdded || !allowedFocuses.includes(proposedQuestion.focus)}
+                      onClick={() => {
+                        if (!disabled && allowedFocuses.includes(proposedQuestion.focus)) onAddQuestion(proposedQuestion);
+                      }}>
+                      {alreadyAdded ? "Already in question list" : "Add to meeting questions"}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </article>
           );
         })}
       </div>
-
-      <label className="session-field">
-        {inputLabel}
-        <Textarea
-          value={draft}
-          rows={3}
+      <div className="eg-chat-composer">
+        <label className="eg-chat-label" htmlFor={inputId}>{inputLabel}</label>
+        <Textarea id={inputId} value={draft} rows={2} disabled={disabled}
           placeholder="Ask what to clarify or request a tailored question…"
-          onChange={(_, data) => onDraftChange(data.value)}
-        />
-      </label>
-
-      <Button
-        appearance="primary"
-        disabled={!draft.trim()}
-        onClick={sendMessage}
-      >
-        Send
-      </Button>
-
-      <p className="workspace-secondary">
-        {footerText}
-      </p>
+          onChange={(_, data) => { if (!disabled) onDraftChange(data.value); }} />
+        <div className="eg-chat-composer-actions">
+          <span>Sample replies · AI connection pending</span>
+          <Button appearance="primary" disabled={disabled || !draft.trim()} onClick={sendMessage}
+            icon={<span aria-hidden="true">➤</span>}>Send</Button>
+        </div>
+      </div>
+      <p className="eg-chat-footer">{footerText}</p>
     </section>
   );
 }

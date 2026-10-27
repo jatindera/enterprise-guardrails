@@ -27,15 +27,6 @@ interface EAAssessmentProps {
   onOpenReviewSession: () => void;
 }
 
-interface EAItem {
-  id: string;
-  description: string;
-  comments: string;
-  status: "Open" | "Closed";
-  createdAt: string;
-  closedAt?: string;
-}
-
 export default function EAAssessment({
   project,
   acceptedReview,
@@ -187,7 +178,7 @@ export default function EAAssessment({
         </div>
 
         <Button onClick={onOpenReviewSession}>
-          Open review session
+          Open review meeting
         </Button>
       </div>
 
@@ -237,7 +228,7 @@ export default function EAAssessment({
             </>
           ) : (
             <p className="session-body-text">
-              Accept a review under Review session → Review meeting
+              Accept a review under Review meeting
               to see it here. You can add EA items without an
               accepted meeting review.
             </p>

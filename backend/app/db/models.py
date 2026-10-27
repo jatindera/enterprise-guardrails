@@ -60,6 +60,13 @@ class Project(Base):
         nullable=False,
     )
 
+    assigned_security: Mapped[str] = mapped_column(
+        Unicode(320), nullable=False, default="Not assigned", server_default="Not assigned",
+    )
+    assigned_rai: Mapped[str] = mapped_column(
+        Unicode(320), nullable=False, default="Chris Cawthon", server_default="Chris Cawthon",
+    )
+
     revision: Mapped[int] = mapped_column(
         nullable=False,
         default=1,

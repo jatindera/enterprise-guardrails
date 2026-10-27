@@ -6,6 +6,9 @@
 - uv run alembic upgrade head
 - uv run alembic current
 - uv run alembic check
+- uv run alembic upgrade head
+- uv run alembic check
+- uv run python -m pytest -q
 
 ```
 $env:RUN_SQL_INTEGRATION = "1"

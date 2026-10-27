@@ -30,7 +30,6 @@ interface ProjectWorkspaceProps {
 
 type WorkspaceSection =
   | "Overview"
-  | "Review session"
   | "EA assessment"
   | "Security record"
   | "RAI assessment"
@@ -40,7 +39,6 @@ type WorkspaceSection =
 
 const sections: WorkspaceSection[] = [
   "Overview",
-  "Review session",
   "EA assessment",
   "Security record",
   "RAI assessment",
@@ -129,9 +127,9 @@ function ProjectWorkspaceContent({
 
           <Button
             appearance="primary"
-            onClick={() => setSection("Review session")}
+            onClick={() => setSection("EA assessment")}
           >
-            Open review session
+            Open EA assessment
           </Button>
         </div>
       </div>
@@ -329,20 +327,21 @@ function ProjectWorkspaceContent({
       )}
 
       {/* Keep screens mounted to preserve state across tabs. */}
-      <div hidden={section !== "Review session"}>
+      <div hidden={section !== "EA assessment"}>
         <ReviewSession
           project={project}
+          preparationDomain="EA"
           onAcceptedReviewChange={setAcceptedReview}
-        />
-      </div>
-
-      <div hidden={section !== "EA assessment"}>
-        <EAAssessment
-          project={project}
-          acceptedReview={acceptedReview}
-          onOpenReviewSession={() =>
-            setSection("Review session")
-          }
+          assessmentTab={{
+            label: "EA assessment",
+            render: (openReviewMeeting) => (
+              <EAAssessment
+                project={project}
+                acceptedReview={acceptedReview}
+                onOpenReviewSession={openReviewMeeting}
+              />
+            ),
+          }}
         />
       </div>
 

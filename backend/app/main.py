@@ -1,9 +1,13 @@
+# keep following at top of file to avoid circular imports
+from app.modules.projects.router import router as projects_router
+
 import json
 import logging
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from typing import Annotated
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,6 +15,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException
 
 from app.core.config import Settings
+from app.core.auth import TokenVerifier, current_user
 
 
 logger = logging.getLogger("guardrails.api")
@@ -56,6 +61,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else None
         ),
     )
+    application.state.token_verifier = TokenVerifier(settings)
+    application.include_router(projects_router)
+
+    @application.get("/api/auth/me", tags=["Authentication"])
+    def auth_me(user: Annotated[dict, Depends(current_user)]) -> dict:
+        return user
+
 
     @application.exception_handler(HTTPException)
     async def handle_http_error(
@@ -125,7 +137,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 }
             )
         )
-
+      
         return response
 
     # Added last so CORS wraps the request middleware.

@@ -1,4 +1,8 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
+import { useAuth } from "./auth/AuthGate";
+import { preparationAccess, canEditPreparationFocus } from "./auth/preparationAccess";
+import type { PreparationScope } from "./auth/preparationAccess";
 import MeetingReview from "./MeetingReview";
 import type { AcceptedMeetingReview } from "./types";
 
@@ -10,7 +14,6 @@ import type { PreparedQuestion } from "./MeetingPreparation";
 import {
   Badge,
   Button,
-  Input,
   MessageBar,
   MessageBarBody,
   Select,
@@ -27,15 +30,24 @@ import type { PreparationChatMessage } from "./PreparationChat";
 
 interface ReviewSessionProps {
   project: Project;
+  heading?: string;
+  facilitatorName?: string;
+  preparationDomain?: Exclude<PreparationScope, "All">;
   onAcceptedReviewChange: (
     review: AcceptedMeetingReview | null,
   ) => void;
+  // The host supplies an optional fourth panel; meeting logic stays reusable.
+  assessmentTab?: {
+    label: string;
+    render: (openReviewMeeting: () => void) => ReactNode;
+  };
 }
 
 type MeetingPhase =
   | "Prepare"
   | "Conduct meeting"
-  | "Review meeting";
+  | "Review meeting"
+  | "Assessment";
 
 type ReviewFocus = "Joint" | "EA" | "Security" | "RAI";
 
@@ -49,12 +61,6 @@ interface DiscussionEntry {
   captureMode: Exclude<CaptureMode, "live">;
 }
 
-interface Suggestion {
-  question: string;
-  reason: string;
-}
-
-
 function captureModeLabel(
   mode: Exclude<CaptureMode, "live">,
 ): string {
@@ -63,123 +69,34 @@ function captureModeLabel(
     : "Manual notes";
 }
 
-function suggestFollowUp(
-  answer: string,
-  focus: ReviewFocus,
-): Suggestion {
-  // Temporary UI simulation.
-  // Replace with a FastAPI / Foundry request later.
-  const text = answer.toLowerCase();
-
-  if (focus === "Security") {
-    return {
-      question:
-        "Which identities access the data, and how are permissions and credentials managed?",
-      reason:
-        "Clarify identity and access controls for the described solution.",
-    };
-  }
-
-  if (focus === "RAI") {
-    return {
-      question:
-        "What decisions or actions depend on AI, and who checks its output before use?",
-      reason:
-        "Clarify autonomy, possible consequences, and human oversight.",
-    };
-  }
-
-  if (focus === "EA") {
-    return {
-      question:
-        "What are the source, processing, and destination systems, and who owns each?",
-      reason:
-        "Establish the solution boundaries and responsibilities.",
-    };
-  }
-
-  if (/stor|retain|delet|temporar/.test(text)) {
-    return {
-      question:
-        "Where is the data stored, what retention period applies, and who verifies deletion?",
-      reason:
-        "The answer mentions data storage or lifecycle; details need clarification.",
-    };
-  }
-
-  if (/\b(api|apis|vendor|vendors|saas)\b/.test(text)) {
-    return {
-      question:
-        "What data goes to the external service, and what usage, retention, and exit terms apply?",
-      reason:
-        "The answer mentions an external dependency.",
-    };
-  }
-
-  if (/\b(ai|agent|agents|model|models)\b/.test(text)) {
-    return {
-      question:
-        "Does the AI only suggest outputs, or can it perform actions, and what human checks apply?",
-      reason:
-        "The answer suggests AI involvement; its authority needs clarification.",
-    };
-  }
-
-
-  return {
-    question:
-      "Which systems and data are needed, and what happens if the application is unavailable or incorrect?",
-    reason:
-      "Clarify dependencies and business impact before technical design.",
-  };
-}
-
 export default function ReviewSession({
   project,
+  heading = "Shared review session",
+  facilitatorName = project.assignedEA,
+  preparationDomain = "EA",
   onAcceptedReviewChange,
+  assessmentTab,
 }: ReviewSessionProps) {
+  const access = preparationAccess(useAuth().roles);
+  const preparationScope = preparationDomain;
+  const canPrepare = canEditPreparationFocus(access, preparationDomain);
   const [phase, setPhase] = useState<MeetingPhase>("Prepare");
 
-  const [meetingTitle, setMeetingTitle] = useState(
-    `${project.name} — stakeholder review`,
-  );
-
-  const [participants, setParticipants] = useState("");
-  const [focus, setFocus] = useState<ReviewFocus>("Joint");
-
-  const [captureMode, setCaptureMode] =
+  const meetingTitle = `${project.name} — stakeholder review`;
+  const [focus, setFocus] = useState<ReviewFocus>(preparationDomain);
+  const [captureMode] =
     useState<CaptureMode>("manual");
 
   const [currentQuestion, setCurrentQuestion] = useState("");
 
-  const [answer, setAnswer] = useState("");
-  const [speaker, setSpeaker] = useState("");
-
   const [entries, setEntries] =
     useState<DiscussionEntry[]>([]);
-
-  const [suggestion, setSuggestion] = useState<Suggestion>({
-    question:
-      "Who will use the application, and how will you measure its business value?",
-    reason:
-      "Start with stakeholder goals and success measures.",
-  });
-
-  const [understanding, setUnderstanding] = useState("");
-  const [correction, setCorrection] = useState("");
-  const [showCorrection, setShowCorrection] = useState(false);
-
-  const [status, setStatus] = useState(
-    "Awaiting stakeholder answer",
-  );
-
-  const [error, setError] = useState("");
 
   const liveUnavailable = captureMode === "live";
   const [transcript, setTranscript] =
     useState<TranscriptAttachment | null>(null);
 
-  const [reviewerCorrections, setReviewerCorrections] =
+  const [reviewerCorrections] =
     useState<ReviewerCorrection[]>([]);
   const captureStatusLabel =
     captureMode === "live"
@@ -210,107 +127,6 @@ export default function ReviewSession({
     useState<PreparedQuestion[]>([]);
 
   const [manualQuestionDraft, setManualQuestionDraft] = useState("");
-
-  function captureAnswer() {
-    if (captureMode === "live") {
-      setError(
-        "Live transcription is awaiting integration. Select manual notes or dictated summary."
-      );
-      return;
-    }
-
-    if (!currentQuestion.trim()) {
-      setError("Enter or select a question before capturing an answer.");
-      return;
-    }
-
-    if (!answer.trim()) {
-      setError("Please capture an answer before continuing.");
-      return;
-    }
-
-    const entry: DiscussionEntry = {
-      id: entries.length + 1,
-      question: currentQuestion.trim(),
-      answer: answer.trim(),
-      speaker: speaker.trim() || "Not recorded",
-      focus,
-      captureMode,
-      capturedAt: new Date().toISOString(),
-    };
-
-    setEntries((current) => [...current, entry]);
-
-    if (activePreparedQuestionId) {
-      const capturedQuestionId = activePreparedQuestionId;
-
-      setAskedPreparedQuestionIds((current) =>
-        current.includes(capturedQuestionId)
-          ? current
-          : [...current, capturedQuestionId]
-      );
-
-      setActivePreparedQuestionId(null);
-    }
-
-    setUnderstanding(entry.answer);
-    setSuggestion(suggestFollowUp(entry.answer, entry.focus));
-
-    setAnswer("");
-    setSpeaker("");
-    setCorrection("");
-    setShowCorrection(false);
-    setError("");
-    setStatus("Answer captured · Simulated suggestions updated");
-  }
-
-  function useSuggestedQuestion() {
-    if (answer.trim()) {
-      setError(
-        "Capture or clear the current draft answer before changing the question."
-      );
-      return;
-    }
-
-    setCurrentQuestion(suggestion.question);
-    setActivePreparedQuestionId(null);
-    setStatus("Awaiting stakeholder answer");
-    setError("");
-  }
-
-  function applyCorrection() {
-    const correctedText = correction.trim();
-    const latestEntry = entries[entries.length - 1];
-
-    if (!correctedText) {
-      setError("Enter the corrected understanding.");
-      return;
-    }
-
-    if (!latestEntry) {
-      setError("Capture an answer before adding a correction.");
-      return;
-    }
-
-    setReviewerCorrections((current) => [
-      ...current,
-      {
-        id: current.length + 1,
-        entryId: latestEntry.id,
-        text: correctedText,
-        correctedAt: new Date().toISOString(),
-      },
-    ]);
-
-    setUnderstanding(correctedText);
-    setSuggestion(suggestFollowUp(correctedText, focus));
-    setShowCorrection(false);
-    setError("");
-
-    setStatus(
-      "Reviewer correction retained · Original answer preserved",
-    );
-  }
 
   function usePreparedQuestion(question: PreparedQuestion) {
     const questionText = question.question.trim();
@@ -345,6 +161,7 @@ export default function ReviewSession({
   }
 
   function addQuestionFromChat(question: PreparedQuestion) {
+    if (!canPrepare || question.focus !== preparationScope) return;
     setPreparedQuestions((current) => {
       const alreadyExists = current.some(
         (item) =>
@@ -415,10 +232,10 @@ export default function ReviewSession({
     <section className="review-session">
       <div className="session-heading">
         <div>
-          <h2>Shared review session</h2>
+          <h2>{heading}</h2>
           <p>
             Demand #{project.demandId} · Facilitator:{" "}
-            {project.assignedEA}
+            {facilitatorName}
           </p>
         </div>
 
@@ -430,13 +247,7 @@ export default function ReviewSession({
         </Badge>
       </div>
 
-      <MessageBar intent="info">
-        <MessageBarBody>
-          AI responses are simulated. Shared-user
-          synchronization, live transcription, and permanent
-          storage are not connected.
-        </MessageBarBody>
-      </MessageBar>
+
 
       <div
         className="meeting-phase-controls"
@@ -460,8 +271,22 @@ export default function ReviewSession({
             {item}
           </Button>
         ))}
+        {assessmentTab && (
+          <Button
+            appearance={phase === "Assessment" ? "primary" : "secondary"}
+            aria-pressed={phase === "Assessment"}
+            onClick={() => setPhase("Assessment")}
+          >
+            {assessmentTab.label}
+          </Button>
+        )}
       </div>
 
+      {phase === "Prepare" && !canPrepare && (
+        <MessageBar intent="info"><MessageBarBody>
+          {preparationDomain} preparation is read-only for your role.
+        </MessageBarBody></MessageBar>
+      )}
       {phase === "Prepare" && (
         <div className="session-grid preparation-layout">
           {/* LEFT: AI-generated questions and meeting preparation */}
@@ -471,27 +296,11 @@ export default function ReviewSession({
             </div>
 
             <div className="workspace-panel-body">
-              <label className="session-field">
-                Meeting title
-                <Input
-                  value={meetingTitle}
-                  onChange={(_, data) => setMeetingTitle(data.value)}
-                />
-              </label>
-
-              <label className="session-field">
-                Participants / roles (optional)
-                <Textarea
-                  value={participants}
-                  placeholder="EA, business stakeholders, Security, RAI, delivery team…"
-                  onChange={(_, data) => setParticipants(data.value)}
-                />
-              </label>
-
               <MeetingPreparation
                 project={project}
                 questions={preparedQuestions}
                 onQuestionsChange={setPreparedQuestions}
+                scope={preparationScope}
               />
 
               <p className="workspace-secondary">
@@ -501,7 +310,8 @@ export default function ReviewSession({
 
               <Button
                 appearance="primary"
-                onClick={() => setPhase("Conduct meeting")}
+                disabled={!canPrepare}
+                onClick={() => { if (canPrepare) setPhase("Conduct meeting"); }}
               >
                 Start meeting
               </Button>
@@ -514,7 +324,7 @@ export default function ReviewSession({
               <h2>Preparation AI assistant</h2>
 
               <Badge appearance="tint" color="warning">
-                Simulation
+                AI connection pending
               </Badge>
             </div>
 
@@ -561,6 +371,9 @@ export default function ReviewSession({
                 onMessagesChange={setPreparationMessages}
                 onDraftChange={setPreparationChatDraft}
                 onAddQuestion={addQuestionFromChat}
+                disabled={!canPrepare}
+                scope={preparationScope}
+                allowedFocuses={canPrepare ? [preparationScope] : []}
               />
             </div>
           </section>
@@ -722,32 +535,18 @@ export default function ReviewSession({
 
           <section className="content-panel">
             <div className="panel-heading">
-              <h2>AI Review Copilot</h2>
+              <h2>Meeting Assistant</h2>
 
               <Badge appearance="tint" color="warning">
-                Simulation
+                AI connection pending
               </Badge>
             </div>
 
             <div className="workspace-panel-body">
 
-              <label className="session-field">
-                Focus for the next answer analysis
-                <Select
-                  value={focus}
-                  onChange={(_, data) =>
-                    setFocus(data.value as ReviewFocus)
-                  }
-                >
-                  <option>Joint</option>
-                  <option>EA</option>
-                  <option>Security</option>
-                  <option>RAI</option>
-                </Select>
-              </label>
-
               <PreparationChat
                 project={project}
+                scope={preparationDomain}
                 messages={meetingChatMessages}
                 draft={meetingChatDraft}
                 questions={[...preparedQuestions, ...additionalQuestions]}
@@ -774,10 +573,6 @@ export default function ReviewSession({
           <div className="workspace-panel-body">
             <p className="session-body-text">
               <strong>{meetingTitle}</strong>
-            </p>
-
-            <p className="session-body-text">
-              Participants: {participants || "Not recorded"}
             </p>
 
             <p className="session-body-text">
@@ -828,8 +623,16 @@ export default function ReviewSession({
           corrections={reviewerCorrections}
           transcript={transcript}
           onAcceptedReviewChange={onAcceptedReviewChange}
+          assessmentName={assessmentTab?.label ?? "assessment"}
         />
       </div>
+
+      {/* Keep the host assessment mounted while switching phases. */}
+      {assessmentTab && (
+        <div hidden={phase !== "Assessment"}>
+          {assessmentTab.render(() => setPhase("Review meeting"))}
+        </div>
+      )}
     </section>
   );
 }

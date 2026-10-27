@@ -30,6 +30,7 @@ interface TranscriptSource {
 
 interface MeetingReviewProps {
   projectName: string;
+  assessmentName?: string;
   entries: CapturedAnswer[];
   corrections: ReviewerCorrection[];
   transcript: TranscriptSource | null;
@@ -42,6 +43,7 @@ type ReviewStatus = "Not generated" | "Draft" | "Accepted";
 
 export default function MeetingReview({
   projectName,
+  assessmentName = "assessment",
   entries,
   corrections,
   transcript,
@@ -165,7 +167,7 @@ export default function MeetingReview({
     setReviewStatus("Accepted");
 
     setMessage(
-      "Review accepted into the local project workspace. It is now available under EA assessment as supporting evidence.",
+      `Review accepted into the local project workspace. It is now available under ${assessmentName} as supporting evidence.`,
     );
   }
 
@@ -254,7 +256,7 @@ export default function MeetingReview({
                   onAcceptedReviewChange(null);
 
                   setMessage(
-                    "Review edited. Accept it again to make the revised version available to EA assessment.",
+                    `Review edited. Accept it again to make the revised version available to ${assessmentName}.`,
                   );
                 }}
               />

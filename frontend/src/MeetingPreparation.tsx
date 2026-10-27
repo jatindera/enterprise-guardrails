@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useAuth } from "./auth/AuthGate";
+import { preparationAccess, canEditPreparationFocus } from "./auth/preparationAccess";
+import type { PreparationScope } from "./auth/preparationAccess";
 
 import {
   Badge,
   Button,
-  MessageBar,
-  MessageBarBody,
-  Select,
   Textarea,
 } from "@fluentui/react-components";
 
@@ -20,12 +19,14 @@ export interface PreparedQuestion {
   question: string;
   reason: string;
   selected?: boolean;
+  source?: "manual" | "ai";
 }
 
 interface MeetingPreparationProps {
   project: Project;
   questions: PreparedQuestion[];
   onQuestionsChange: (questions: PreparedQuestion[]) => void;
+  scope: Exclude<PreparationScope, "All">;
 }
 
 function buildDemoQuestions(project: Project): PreparedQuestion[] {
@@ -50,6 +51,7 @@ function buildDemoQuestions(project: Project): PreparedQuestion[] {
       question: text,
       reason,
       selected: false,
+      source: "ai",
     };
   }
 
@@ -130,23 +132,33 @@ function buildDemoQuestions(project: Project): PreparedQuestion[] {
   return questions;
 }
 
+function isManualQuestion(question: PreparedQuestion): boolean {
+  return question.source === "manual" ||
+    (question.source === undefined && question.reason === "Added by reviewer.");
+}
+
 export default function MeetingPreparation({
   project,
   questions,
   onQuestionsChange,
+  scope,
 }: MeetingPreparationProps) {
-  const [filter, setFilter] = useState<"All" | QuestionFocus>("All");
+  const access = preparationAccess(useAuth().roles);
+  const filter = scope;
+  const canPrepare = canEditPreparationFocus(access, scope);
+  const canEdit = (question: PreparedQuestion) => canPrepare && question.focus === scope;
 
-  const visibleQuestions = questions.filter(
-    (question) => filter === "All" || question.focus === filter,
-  );
+  const visibleQuestions = questions
+    .filter((question) => question.focus === filter)
+    .sort((a, b) => Number(isManualQuestion(b)) - Number(isManualQuestion(a)));
 
   const selectedCount = questions.filter(
     (question) =>
-      question.selected === true && question.question.trim().length > 0
+      (question.focus === filter) && question.selected === true && question.question.trim().length > 0
   ).length;
 
   function updateQuestion(id: string, text: string) {
+    if (!questions.some((question) => question.id === id && canEdit(question))) return;
     onQuestionsChange(
       questions.map((question) =>
         question.id === id
@@ -157,6 +169,7 @@ export default function MeetingPreparation({
   }
 
   function toggleSelection(id: string) {
+    if (!questions.some((question) => question.id === id && canEdit(question))) return;
     onQuestionsChange(
       questions.map((question) =>
         question.id === id
@@ -167,37 +180,44 @@ export default function MeetingPreparation({
   }
 
   function addQuestion() {
+    if (!canPrepare) return;
     onQuestionsChange([
-      ...questions,
       {
         id: crypto.randomUUID(),
-        focus: filter === "All" ? "Joint" : filter,
+        focus: filter,
         priority: "Follow-up",
         question: "",
         reason: "Added by reviewer.",
-        selected: true,
+        selected: false,
+        source: "manual",
       },
+      ...questions,
     ]);
   }
 
   function removeQuestion(id: string) {
+    if (!questions.some((question) => question.id === id && canEdit(question))) return;
     onQuestionsChange(
       questions.filter((question) => question.id !== id),
     );
   }
 
   function prepareQuestions() {
-    const generatedQuestions = buildDemoQuestions(project);
+    if (!canPrepare) return;
+    const generatedQuestions = buildDemoQuestions(project)
+      .filter((question) => question.focus === filter || question.focus === "Joint")
+      .map((question) => question.focus === "Joint" ? { ...question, focus: filter } : question);
+    // Common business questions belong to the active reviewer domain when scoped.
 
     const existingTexts = new Set(
       questions.map((question) =>
-        question.question.trim().toLowerCase()
+        `${question.focus}:${question.question.trim().toLowerCase()}`
       )
     );
 
     const newQuestions = generatedQuestions.filter(
       (question) =>
-        !existingTexts.has(question.question.trim().toLowerCase())
+        !existingTexts.has(`${question.focus}:${question.question.trim().toLowerCase()}`)
     );
 
     onQuestionsChange([...questions, ...newQuestions]);
@@ -222,39 +242,22 @@ export default function MeetingPreparation({
         </Badge>
       </div>
 
-      <MessageBar intent="info">
-        <MessageBarBody>
-          This version uses intake keywords and standard questions.
-          Foundry is not connected yet. The connected agent will
-          interpret the full use case and previous meeting evidence.
-        </MessageBarBody>
-      </MessageBar>
-
       <div className="meeting-review-actions">
         <Button
           appearance="primary"
+          disabled={!canPrepare}
           onClick={prepareQuestions}
         >
           Prepare questions with AI
         </Button>
 
-        <Button onClick={addQuestion}>
+        <Button disabled={!canPrepare} onClick={addQuestion}>
           Add my question
         </Button>
 
-        <Select
-          aria-label="Filter preparation questions by reviewer domain"
-          value={filter}
-          onChange={(_, data) =>
-            setFilter(data.value as "All" | QuestionFocus)
-          }
-        >
-          <option value="All">All</option>
-          <option value="Joint">Joint</option>
-          <option value="EA">EA</option>
-          <option value="Security">Security</option>
-          <option value="RAI">RAI</option>
-        </Select>
+        <Badge appearance="tint" color="brand" aria-label={`Preparation domain: ${filter}`}>
+          {filter}
+        </Badge>
       </div>
 
       {questions.length === 0 ? (
@@ -271,20 +274,31 @@ export default function MeetingPreparation({
 
       {questions.length > 0 && visibleQuestions.length === 0 && (
         <p className="workspace-secondary">
-          No questions match this filter. Choose another domain
-          or add a question.
+          No questions are available for this domain yet.
         </p>
       )}
 
       {visibleQuestions.map((question) => {
         const selected = question.selected === true;
+        const manual = isManualQuestion(question);
 
         return (
           <article
             key={question.id}
             className="prepared-question"
+            style={{
+              backgroundColor: manual ? "#fff8e8" : "#f3f8fe",
+              border: `1px solid ${manual ? "#e8cf8b" : "#d3e3f4"}`,
+              borderLeft: `4px solid ${manual ? "#b77a12" : "#196db0"}`,
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 16,
+            }}
           >
             <div className="workspace-tags">
+              <Badge appearance="tint" color={manual ? "warning" : "brand"}>
+                {manual ? "Your question" : "AI suggestion · Demo"}
+              </Badge>
               <Badge appearance="tint" color="brand">
                 {question.focus}
               </Badge>
@@ -306,6 +320,7 @@ export default function MeetingPreparation({
               <Textarea
                 value={question.question}
                 rows={3}
+                disabled={!canEdit(question)}
                 onChange={(_, data) =>
                   updateQuestion(question.id, data.value)
                 }
@@ -320,13 +335,14 @@ export default function MeetingPreparation({
               <Button
                 appearance={selected ? "primary" : "secondary"}
                 aria-pressed={selected}
-                disabled={!question.question.trim()}
+                disabled={!canEdit(question) || !question.question.trim()}
                 onClick={() => toggleSelection(question.id)}
               >
                 {selected ? "Selected ✓" : "Select for meeting"}
               </Button>
 
               <Button
+                disabled={!canEdit(question)}
                 onClick={() => removeQuestion(question.id)}
               >
                 Remove
