@@ -90,7 +90,7 @@ Scoring ranges:
 | Field | Value |
 |---|---|
 | Architecture Assessment Required | Yes |
-| Architecture Review Board (ARB) required | No |
+| Architecture Review Board (ARB) required | Yes |
 | Architecture Assessment Complete Date | Not provided |
 | Architect Assigned | testuser-ea@raspbians.com |
 | Architecture Assessment Status | In Progress |

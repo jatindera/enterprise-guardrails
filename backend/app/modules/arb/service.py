@@ -54,6 +54,11 @@ def find_project(session: Session, demand_id: str, *, lock: bool = False) -> Pro
     return project
 
 
+def require_applicable(project: Project):
+    if not project.arb_required:
+        raise HTTPException(409, "ARB is not applicable to this project. An administrator can change applicability.")
+
+
 def voter_name(user: dict) -> str | None:
     for key in ("name", "username"):
         value = user.get(key)
@@ -110,13 +115,13 @@ def get_results(session: Session, demand_id: str, user: dict, number: int | None
         status=status, outcome=row.outcome if row else None,
         closed_at=row.closed_at if row else None, closed_by_name=row.closed_by_name if row else None,
         reopen_reason=row.reopen_reason if row else None,
-        can_close=admin and current and status == "Open",
-        can_reopen=admin and current and status == "Closed",
+        can_close=project.arb_required and admin and current and status == "Open",
+        can_reopen=project.arb_required and admin and current and status == "Closed",
         rounds=[RoundSummary(number=item.number, status=item.status, outcome=item.outcome,
             opened_at=item.opened_at, opened_by_name=item.opened_by_name, reopen_reason=item.reopen_reason,
             closed_at=item.closed_at, closed_by_name=item.closed_by_name) for item in rows],
         in_favour=favour, against=against, total=len(votes),
-        can_vote=can_vote(user) and current and status == "Open",
+        can_vote=project.arb_required and can_vote(user) and current and status == "Open",
         my_vote=RecordedVote(choice=own.choice, reason=own.reason, revision=own.revision,
             recorded_at=own.recorded_at) if own else None,
         votes=[VoterSummary(voter_object_id=vote.voter_object_id, voter_name=vote.voter_name,
@@ -130,6 +135,7 @@ def submit_vote(session: Session, demand_id: str, data: SubmitVote, user: dict) 
     try:
         with session.begin():
             project = find_project(session, demand_id, lock=True)
+            require_applicable(project)
             row = active_round(session, project.id)
             check_round(row, data.round_number)
             if row.status != "Open":
@@ -167,6 +173,7 @@ def close_round(session: Session, demand_id: str, data: RoundAction, user: dict)
     oid = require_identity(user, "Admin", "Only an administrator may close voting.")
     with session.begin():
         project = find_project(session, demand_id, lock=True)
+        require_applicable(project)
         row = active_round(session, project.id)
         check_round(row, data.round_number)
         if row.status == "Open":
@@ -190,6 +197,7 @@ def reopen_round(session: Session, demand_id: str, data: ReopenRound, user: dict
     oid = require_identity(user, "Admin", "Only an administrator may reopen voting.")
     with session.begin():
         project = find_project(session, demand_id, lock=True)
+        require_applicable(project)
         row = active_round(session, project.id)
         check_round(row, data.round_number)
         if row.status != "Closed":

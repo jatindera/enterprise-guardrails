@@ -51,6 +51,7 @@ export interface Project {
   | "In progress"
   | "Returned for review"
   | "Completed";
+  arbRequired?: boolean;
   arbCompletionDate?: string;
   gateDecision?: "Approved" | "Conditional approval" | "On hold" | "Rejected" | "Not applicable";
   gateScope?: string;

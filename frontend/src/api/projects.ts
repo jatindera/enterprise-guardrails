@@ -10,6 +10,7 @@ export interface ProjectRecord {
   assignedEa: string;
   assignedSecurity: string;
   assignedRai: string;
+  arbRequired: boolean;
   revision: number;
   createdAt: string;
   updatedAt: string;
@@ -190,6 +191,11 @@ export function projectFromApi(record: ProjectRecord, existing?: Project): Proje
     assignedEA: record.assignedEa,
     assignedSecurity: record.assignedSecurity,
     assignedRAI: record.assignedRai,
+    arbRequired: record.arbRequired,
+    arbStatus: record.arbRequired
+      ? (existing?.arbStatus && existing.arbStatus !== "Not applicable" ? existing.arbStatus : "Not scheduled")
+      : "Not applicable",
+    ...(!record.arbRequired ? { arbCompletionDate: undefined } : {}),
     revision: record.revision,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -278,5 +284,12 @@ export function closeARBVoting(demandId: string, roundNumber: number): Promise<A
 export function reopenARBVoting(demandId: string, roundNumber: number, reason: string): Promise<ARBVotingResult> {
   return request<ARBVotingResult>(`/api/projects/${encodeURIComponent(demandId)}/arb-voting/reopen`, {
     method: "POST", body: JSON.stringify({ roundNumber, reason }),
+  });
+}
+
+
+export function updateARBApplicability(demandId: string, arbRequired: boolean, expectedRevision: number): Promise<ProjectRecord> {
+  return request<ProjectRecord>(`/api/projects/${encodeURIComponent(demandId)}/arb-applicability`, {
+    method: "PATCH", body: JSON.stringify({ arbRequired, expectedRevision }),
   });
 }

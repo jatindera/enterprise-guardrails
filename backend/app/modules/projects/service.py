@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.db.models import Project, ProjectIntakeSnapshot
+from app.modules.projects.arb_intake import arb_required_from_intake
 from app.modules.projects.intake_fields import reviewer_from_intake
 from app.modules.projects.architect_upn import architect_upn_from_intake, AmbiguousArchitect
 from app.modules.projects.security_upn import security_upn_from_intake, AmbiguousSecurity
@@ -66,6 +67,7 @@ def _try_resolve_import(resolver, upn, domain, demand_id):
         return None
 
 def import_project(session: Session, data: ImportProject, resolver=None, default_rai_upn="") -> tuple[ProjectDetail, bool]:
+    arb_required = arb_required_from_intake(data.markdown)
     ea_from_intake = reviewer_from_intake(data.markdown, "Architect Assigned")
     security_from_intake = reviewer_from_intake(data.markdown, "Security Resource Assigned")
     try:
@@ -86,7 +88,8 @@ def import_project(session: Session, data: ImportProject, resolver=None, default
     try:
         # Any failure rolls back BOTH the core change and intake snapshot.
         with session.begin():
-            project = session.scalar(select(Project).where(Project.demand_id == data.demand_id))
+            project = session.scalar(select(Project).where(Project.demand_id == data.demand_id)
+                .with_hint(Project, "WITH (UPDLOCK, HOLDLOCK)", dialect_name="mssql"))
             created = project is None
 
             if created:
@@ -103,7 +106,7 @@ def import_project(session: Session, data: ImportProject, resolver=None, default
 
             if created:
                 project = Project(
-                    demand_id=data.demand_id, name=data.name,
+                    demand_id=data.demand_id, name=data.name, arb_required=arb_required,
                     business_function=data.business_function or "Not provided",
                     assigned_ea=ea_from_intake if ea_from_intake is not None else (data.assigned_ea or "Not assigned"),
                     assigned_security=security_from_intake or "Not assigned",
@@ -114,6 +117,7 @@ def import_project(session: Session, data: ImportProject, resolver=None, default
                 )
                 session.add(project)
             else:
+                project.arb_required = arb_required  # Latest intake supersedes Admin override.
                 project.name = data.name
                 if data.business_function is not None:
                     project.business_function = data.business_function
@@ -189,3 +193,18 @@ def update_rai_assignment(session: Session, demand_id: str, data: UpdateRAIAssig
         return result
     except StaleDataError as exc:
         raise HTTPException(409, "Project changed while saving. Reload the project before retrying.") from exc
+
+
+def update_arb_applicability(session, demand_id, data):
+    from app.modules.arb.service import find_project
+    try:
+        with session.begin():
+            project = find_project(session, demand_id, lock=True)
+            if project.revision != data.expected_revision:
+                raise HTTPException(409, "Project changed. Reload before changing ARB applicability.")
+            project.arb_required = data.arb_required
+            session.flush()
+            result = project_detail(session, project)
+        return result
+    except StaleDataError:
+        raise HTTPException(409, "Project changed. Reload before retrying.") from None

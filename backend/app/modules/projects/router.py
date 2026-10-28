@@ -7,7 +7,7 @@ from app.core.auth import current_user, require_admin
 from app.db.session import get_session
 from app.modules.projects import service
 from app.modules.projects.ea_assignment_router import graph_resolver
-from app.modules.projects.schemas import ImportProject, ProjectDetail, ProjectPage, UpdateRAIAssignment
+from app.modules.projects.schemas import UpdateARBApplicability, ImportProject, ProjectDetail, ProjectPage, UpdateRAIAssignment
 
 
 router = APIRouter(prefix="/api/projects", tags=["Projects"], dependencies=[Depends(current_user)])
@@ -46,3 +46,12 @@ def update_rai_assignment(
     resolver=Depends(graph_resolver),
 ) -> ProjectDetail:
     return service.update_rai_assignment(session, demand_id, data, resolver)
+
+
+@router.patch("/{demand_id}/arb-applicability", response_model=ProjectDetail, dependencies=[Depends(require_admin)])
+def update_arb_applicability(
+    demand_id: Annotated[str, Path(pattern=r"^[0-9]{1,64}$")],
+    data: UpdateARBApplicability,
+    session: DatabaseSession,
+) -> ProjectDetail:
+    return service.update_arb_applicability(session, demand_id, data)

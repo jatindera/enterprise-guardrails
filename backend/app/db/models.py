@@ -81,6 +81,8 @@ class Project(Base):
         Unicode(320), nullable=False, default="Chris Cawthon", server_default="Chris Cawthon",
     )
 
+    arb_required: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="0")
+
     revision: Mapped[int] = mapped_column(
         nullable=False,
         default=1,

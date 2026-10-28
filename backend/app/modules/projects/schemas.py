@@ -72,6 +72,7 @@ class ProjectSummary(APIModel):
     assigned_ea: str
     assigned_security: str
     assigned_rai: str
+    arb_required: bool
     revision: int
     created_at: datetime
     updated_at: datetime
@@ -104,3 +105,8 @@ class UpdateRAIAssignment(APIModel):
         if len(value.encode("utf-16-le")) // 2 > 320:
             raise ValueError("Reviewer name exceeds the database length limit.")
         return value
+
+
+class UpdateARBApplicability(APIModel):
+    arb_required: bool = Field(strict=True)
+    expected_revision: int = Field(ge=1, strict=True)

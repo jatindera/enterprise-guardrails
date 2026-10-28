@@ -1,6 +1,8 @@
 import { useProjectUpdate } from "./ProjectUpdates";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ARBVoting from "./ARBVoting";
+import { useAuth } from "./auth/AuthGate";
+import { getProject, updateARBApplicability, type ProjectRecord } from "./api/projects";
 
 import {
   Badge,
@@ -62,7 +64,7 @@ export default function ARBReview({ project, canEditDocuments, active = true }: 
   const updateProject = useProjectUpdate(project.demandId);
   const [votingResult, setVotingResult] = useState<ARBVotingResult | null>(null);
   useEffect(() => {
-    if (!votingResult || project.arbStatus === "Not applicable") return;
+    if (!votingResult || project.arbRequired !== true) return;
     let status: Project["arbStatus"] | undefined;
     let completedAt: string | undefined;
     if (votingResult.status === "Closed") {
@@ -79,57 +81,63 @@ export default function ARBReview({ project, canEditDocuments, active = true }: 
       // Portfolio decisions remain on the existing frontend path until assessment persistence.
       updateProject({ arbStatus: status, arbCompletionDate: completedAt });
     }
-  }, [votingResult, project.arbStatus, project.eaStatus, project.arbCompletionDate, updateProject]);
+  }, [votingResult, project.arbRequired, project.arbStatus, project.eaStatus, project.arbCompletionDate, updateProject]);
 
-  // Retain the initial applicability during this workspace session.
-  const [initiallyRequired] = useState(
-    project.arbStatus !== "Not applicable",
-  );
+  const { roles } = useAuth();
+  const isAdmin = roles.includes("Admin");
+  const [applicability, setApplicability] = useState<{ required: boolean; revision: number } | null>(null);
+  const [loadingApplicability, setLoadingApplicability] = useState(true);
+  const [savingApplicability, setSavingApplicability] = useState(false);
+  const projectRef = useRef(project);
+  projectRef.current = project;
 
-  const [previousARB, setPreviousARB] = useState<{
-    status: Project["arbStatus"];
-    completionDate?: string;
-  }>({
-    status:
-      project.arbStatus === "Not applicable"
-        ? "Not scheduled"
-        : project.arbStatus,
-    completionDate: project.arbCompletionDate,
-  });
+  function applyApplicability(record: ProjectRecord) {
+    setApplicability({ required: record.arbRequired, revision: record.revision });
+    const previous = projectRef.current;
+    updateProject({
+      arbRequired: record.arbRequired, revision: record.revision,
+      arbStatus: record.arbRequired
+        ? (previous.arbStatus === "Not applicable" ? "Not scheduled" : previous.arbStatus)
+        : "Not applicable",
+      ...(!record.arbRequired ? { arbCompletionDate: undefined } : {}),
+    });
+  }
+  const applyRef = useRef(applyApplicability);
+  applyRef.current = applyApplicability;
 
-  const notApplicable = project.arbStatus === "Not applicable";
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    setLoadingApplicability(true);
+    getProject(project.demandId).then((record) => {
+      if (!cancelled) applyRef.current(record);
+    }).catch((cause) => {
+      if (!cancelled) {
+        setApplicability(null);
+        setError(cause instanceof Error ? cause.message : "Could not load ARB applicability. Refresh to retry.");
+      }
+    }).finally(() => { if (!cancelled) setLoadingApplicability(false); });
+    return () => { cancelled = true; };
+  }, [project.demandId, active, project.arbRequired]);
 
-  function changeApplicability(checked: boolean) {
-    if (!initiallyRequired || !canEditDocuments) return;
+  const notApplicable = !applicability?.required;
 
+  async function changeApplicability(checked: boolean) {
+    if (!isAdmin || !applicability || savingApplicability || loadingApplicability) return;
+    setSavingApplicability(true);
     setError("");
     setMessage("");
-
-    if (checked) {
-      setPreviousARB({
-        status: project.arbStatus,
-        completionDate: project.arbCompletionDate,
-      });
-
-      updateProject({
-        arbStatus: "Not applicable",
-        arbCompletionDate: undefined,
-      });
-    } else {
-      const canRestoreCompletion =
-        previousARB.status === "Completed" &&
-        project.eaStatus === "Approved";
-
-      updateProject({
-        arbStatus:
-          previousARB.status === "Completed" &&
-            !canRestoreCompletion
-            ? "In progress"
-            : previousARB.status,
-        arbCompletionDate: canRestoreCompletion
-          ? previousARB.completionDate
-          : undefined,
-      });
+    try {
+      const record = await updateARBApplicability(project.demandId, !checked, applicability.revision);
+      applyRef.current(record);
+      setVotingResult(null);
+      setMessage("ARB applicability saved. The next intake import will apply its latest value.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save ARB applicability.");
+      // Reload a possibly changed revision; never display an optimistic toggle.
+      try { applyRef.current(await getProject(project.demandId)); } catch { setApplicability(null); }
+    } finally {
+      setSavingApplicability(false);
     }
   }
   const [activeTab, setActiveTab] = useState<"documents" | "vote">("vote");
@@ -242,23 +250,24 @@ export default function ARBReview({ project, canEditDocuments, active = true }: 
         <div className="workspace-panel-body">
           <Checkbox
             label="ARB is not applicable to this project"
-            checked={notApplicable}
-            disabled={!initiallyRequired || !canEditDocuments}
+            checked={applicability ? notApplicable : project.arbRequired !== true}
+            disabled={!isAdmin || !applicability || loadingApplicability || savingApplicability}
             onChange={(_, data) =>
               changeApplicability(data.checked === true)
             }
           />
 
-          {notApplicable && (
+          {loadingApplicability && <p className="workspace-secondary">Loading ARB applicability…</p>}
+          {!isAdmin && <p className="workspace-secondary">Only an administrator can change ARB applicability.</p>}
+          {applicability && !loadingApplicability && notApplicable && (
             <p className="workspace-secondary">
-              No ARB meeting or voting is required. Existing documents
-              and records are retained.
+              No ARB meeting or voting is required.
             </p>
           )}
         </div>
       </section>
 
-      <div hidden={notApplicable}>
+      {applicability && !loadingApplicability && !notApplicable && <div>
         <div className="meeting-review-actions" role="group" aria-label="ARB review sections">
           <Button appearance={activeTab === "vote" ? "primary" : "secondary"}
             aria-pressed={activeTab === "vote"} onClick={() => setActiveTab("vote")}>
@@ -358,7 +367,7 @@ export default function ARBReview({ project, canEditDocuments, active = true }: 
             active={active && activeTab === "vote" && !notApplicable}
             onCurrentResult={setVotingResult} />
         </div>
-      </div>
+      </div>}
     </section>
   );
 }

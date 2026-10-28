@@ -8,7 +8,14 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.auth import current_user
 from app.db.models import ARBVote, ARBVoteEvent, ARBVotingRound, Project
-from test_project_api import client, database, payload
+from test_project_api import client, database, payload as base_payload
+
+
+def payload(*args, **kwargs):
+    data = base_payload(*args, **kwargs)
+    data["markdown"] += "\n- **Architecture Review Board (ARB) Required:** Yes"
+    return data
+
 
 
 def set_user(client, oid, roles):

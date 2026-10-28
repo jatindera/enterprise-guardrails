@@ -6,6 +6,7 @@ vi.mock("../auth/authClient", () => ({ getAccessToken: vi.fn(async () => "test-a
 
 const record: ProjectRecord = {
   id: "project-id", demandId: "3601", name: "Example project",
+  arbRequired: true,
   businessFunction: "Water", assignedEa: "Jatinder Arora", assignedSecurity: "Christina Kelly", assignedRai: "Chris Cawthon", revision: 1,
   createdAt: "2026-10-23T00:00:00Z", updatedAt: "2026-10-23T00:00:00Z",
 };
@@ -114,4 +115,18 @@ describe("reviewer assignments", () => {
     expect(options.method).toBe("PATCH");
     expect(JSON.parse(options.body)).toEqual({ assignedRai: "New manager", expectedRevision: 7 });
   });
+});
+
+
+it("uses the server ARB applicability after reimport instead of a local override", () => {
+  const existing = projectFromApi(record);
+  existing.arbStatus = "Completed";
+  existing.arbCompletionDate = "2026-10-28";
+  const disabled = projectFromApi({ ...record, arbRequired: false, revision: 2 }, existing);
+  expect(disabled.arbStatus).toBe("Not applicable");
+  expect(disabled.arbRequired).toBe(false);
+  expect(disabled.arbCompletionDate).toBeUndefined();
+  const enabled = projectFromApi({ ...record, arbRequired: true, revision: 3 }, disabled);
+  expect(enabled.arbStatus).toBe("Not scheduled");
+  expect(enabled.arbRequired).toBe(true);
 });

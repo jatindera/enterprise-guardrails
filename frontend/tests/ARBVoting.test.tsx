@@ -13,10 +13,14 @@ const mocks = vi.hoisted(() => ({
   close: vi.fn(),
   reopen: vi.fn(),
   update: vi.fn(),
+  project: vi.fn(),
+  applicability: vi.fn(),
 }));
 vi.mock("../src/ProjectUpdates", () => ({ useProjectUpdate: () => mocks.update }));
 vi.mock("../src/auth/AuthGate", () => ({ useAuth: () => ({ roles: mocks.roles }) }));
 vi.mock("../src/api/projects", () => ({
+  getProject: mocks.project,
+  updateARBApplicability: mocks.applicability,
   getARBVoting: mocks.get,
   saveARBVote: mocks.save,
   closeARBVoting: mocks.close,
@@ -39,6 +43,8 @@ beforeEach(() => {
   mocks.close.mockReset();
   mocks.reopen.mockReset();
   mocks.update.mockReset();
+  mocks.project.mockReset().mockResolvedValue({ arbRequired: true, revision: 1 });
+  mocks.applicability.mockReset();
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 function button(name: string) {
@@ -244,9 +250,9 @@ it("completes the current portfolio ARB only when a passed round also has EA app
   mocks.roles = ["Admin"];
   mocks.get.mockResolvedValue(result({ status: "Closed", outcome: "Passed", canVote: false,
     canReopen: true, total: 1, inFavour: 1, closedAt: "2026-10-28T10:10:00Z" }));
-  const project = { demandId: "3601", assignedEA: "EA", arbStatus: "Not scheduled", eaStatus: "Pending" } as Project;
+  const project = { demandId: "3601", assignedEA: "EA", arbRequired: true, arbStatus: "Not scheduled", eaStatus: "Pending" } as Project;
   const view = render(<ARBReview project={project} canEditDocuments active />);
-  fireEvent.click(button("Core Team Vote"));
+  fireEvent.click(await screen.findByRole("button", { name: "Core Team Vote" }));
   await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ arbStatus: "In progress", arbCompletionDate: undefined }));
   expect(mocks.update.mock.calls.some(([patch]) => patch.arbStatus === "Completed")).toBe(false);
   view.rerender(<ARBReview project={{ ...project, eaStatus: "Approved" }} canEditDocuments active />);
@@ -259,19 +265,19 @@ it("clears completed portfolio status when a new voting round is active", async 
   mocks.roles = ["Admin"];
   mocks.get.mockResolvedValue(result({ roundNumber: 2, currentRoundNumber: 2,
     canVote: false, canClose: true, reopenReason: "Re-review" }));
-  const project = { demandId: "3601", assignedEA: "EA", arbStatus: "Completed",
+  const project = { demandId: "3601", assignedEA: "EA", arbRequired: true, arbStatus: "Completed",
     eaStatus: "Approved", arbCompletionDate: "2026-10-28T10:10:00Z" } as Project;
   render(<ARBReview project={project} canEditDocuments active />);
-  fireEvent.click(button("Core Team Vote"));
+  fireEvent.click(await screen.findByRole("button", { name: "Core Team Vote" }));
   await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ arbStatus: "In progress", arbCompletionDate: undefined }));
 });
 
 
 
 it("places Core Team Vote first and opens it by default", async () => {
-  const project = { demandId: "3601", assignedEA: "EA", arbStatus: "Not scheduled", eaStatus: "Pending" } as Project;
+  const project = { demandId: "3601", assignedEA: "EA", arbRequired: true, arbStatus: "Not scheduled", eaStatus: "Pending" } as Project;
   render(<ARBReview project={project} canEditDocuments active />);
-  const tabs = within(screen.getByRole("group", { name: "ARB review sections" })).getAllByRole("button");
+  const tabs = within(await screen.findByRole("group", { name: "ARB review sections" })).getAllByRole("button");
   expect(tabs.map((tab) => tab.textContent)).toEqual(["Core Team Vote", "ADR & meeting documents"]);
   expect(tabs[0].getAttribute("aria-pressed")).toBe("true");
   await screen.findByText("In favour: 0");
@@ -299,4 +305,41 @@ it("can retry a history load failure without disabling current voting", async ()
   failed = false;
   fireEvent.click(button("Retry history"));
   await waitFor(() => expect(screen.queryByText("Archive temporarily unavailable")).toBeNull());
+});
+
+
+it("hides ARB screens for a not-applicable project and keeps a disabled checkbox for non-admin", async () => {
+  mocks.project.mockResolvedValue({ arbRequired: false, revision: 3 });
+  const project = { demandId: "3601", assignedEA: "EA", arbRequired: false, arbStatus: "Not applicable" } as Project;
+  render(<ARBReview project={project} canEditDocuments active />);
+  await screen.findByText(/No ARB meeting or voting is required/);
+  const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
+  expect(checkbox.checked).toBe(true);
+  expect(checkbox.disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Core Team Vote" })).toBeNull();
+  expect(mocks.get).not.toHaveBeenCalled();
+});
+
+it("lets Admin enable a previously not-applicable ARB and persists before showing tabs", async () => {
+  mocks.roles = ["Admin"];
+  mocks.project.mockResolvedValue({ arbRequired: false, revision: 3 });
+  mocks.applicability.mockResolvedValue({ arbRequired: true, revision: 4 });
+  const project = { demandId: "3601", assignedEA: "EA", arbRequired: false, arbStatus: "Not applicable" } as Project;
+  render(<ARBReview project={project} canEditDocuments={false} active />);
+  await screen.findByText(/No ARB meeting or voting is required/);
+  const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
+  expect(checkbox.disabled).toBe(false);
+  fireEvent.click(checkbox);
+  await screen.findByRole("button", { name: "Core Team Vote" });
+  expect(mocks.applicability).toHaveBeenCalledWith("3601", true, 3);
+  expect(checkbox.checked).toBe(false);
+});
+
+it("does not show ARB controls when applicability cannot be loaded", async () => {
+  mocks.project.mockRejectedValue(new Error("API unavailable"));
+  render(<ARBReview project={{ demandId: "3601", assignedEA: "EA", arbRequired: true } as Project} canEditDocuments active />);
+  await screen.findByText("API unavailable");
+  expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Core Team Vote" })).toBeNull();
+  expect(mocks.get).not.toHaveBeenCalled();
 });
