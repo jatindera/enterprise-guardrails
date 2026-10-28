@@ -9,6 +9,7 @@ VoteChoice = Literal["For", "Against"]
 
 
 class SubmitVote(APIModel):
+    round_number: int = Field(ge=1, strict=True)
     choice: VoteChoice
     reason: str | None = Field(default=None, max_length=2000)
     # Zero means the caller has not previously recorded a vote.
@@ -51,7 +52,57 @@ class VoterSummary(RecordedVote):
     voter_name: str | None
 
 
+class RoundAction(APIModel):
+    round_number: int = Field(ge=1, strict=True)
+
+
+class ReopenRound(RoundAction):
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def valid_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value or len(value.encode("utf-16-le")) // 2 > 2000:
+            raise ValueError("Enter a reason of at most 2000 characters.")
+        return value
+
+
+class RoundSummary(APIModel):
+    number: int
+    status: Literal["Open", "Closed"]
+    outcome: Literal["Passed", "Returned for review"] | None
+    opened_at: datetime | None
+    opened_by_name: str | None
+    reopen_reason: str | None
+    closed_at: datetime | None
+    closed_by_name: str | None
+
+    @field_validator("opened_at", "closed_at")
+    @classmethod
+    def utc(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
 class VotingResult(APIModel):
+    round_number: int
+    current_round_number: int
+    status: Literal["Open", "Closed"]
+    outcome: Literal["Passed", "Returned for review"] | None
+    closed_at: datetime | None
+    closed_by_name: str | None
+    reopen_reason: str | None
+    can_close: bool
+    can_reopen: bool
+    rounds: list[RoundSummary]
+
+    @field_validator("closed_at")
+    @classmethod
+    def utc(cls, value: datetime | None) -> datetime | None:
+        return RoundSummary.utc(value)
+
     in_favour: int
     against: int
     total: int

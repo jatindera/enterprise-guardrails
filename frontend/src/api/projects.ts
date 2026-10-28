@@ -223,7 +223,28 @@ export interface ARBVoterSummary extends ARBRecordedVote {
   voterName: string | null;
 }
 
+export interface ARBRoundSummary {
+  number: number;
+  status: "Open" | "Closed";
+  outcome: "Passed" | "Returned for review" | null;
+  openedAt: string | null;
+  openedByName: string | null;
+  reopenReason: string | null;
+  closedAt: string | null;
+  closedByName: string | null;
+}
+
 export interface ARBVotingResult {
+  roundNumber: number;
+  currentRoundNumber: number;
+  status: "Open" | "Closed";
+  outcome: "Passed" | "Returned for review" | null;
+  closedAt: string | null;
+  closedByName: string | null;
+  reopenReason: string | null;
+  canClose: boolean;
+  canReopen: boolean;
+  rounds: ARBRoundSummary[];
   inFavour: number;
   against: number;
   total: number;
@@ -232,16 +253,30 @@ export interface ARBVotingResult {
   votes: ARBVoterSummary[];
 }
 
-export function getARBVoting(demandId: string, signal?: AbortSignal): Promise<ARBVotingResult> {
+export function getARBVoting(demandId: string, signal?: AbortSignal, roundNumber?: number): Promise<ARBVotingResult> {
   return request<ARBVotingResult>(
-    `/api/projects/${encodeURIComponent(demandId)}/arb-voting`, { signal },
+    `/api/projects/${encodeURIComponent(demandId)}/arb-voting${roundNumber === undefined ? "" : "?roundNumber=" + roundNumber}`, { signal },
   );
 }
 
 export function saveARBVote(
-  demandId: string, choice: ARBVoteChoice, reason: string | null, expectedRevision: number,
+  demandId: string, choice: ARBVoteChoice, reason: string | null, expectedRevision: number, roundNumber: number,
 ): Promise<ARBVotingResult> {
   return request<ARBVotingResult>(`/api/projects/${encodeURIComponent(demandId)}/arb-vote`, {
-    method: "PUT", body: JSON.stringify({ choice, reason, expectedRevision }),
+    method: "PUT", body: JSON.stringify({ choice, reason, expectedRevision, roundNumber }),
+  });
+}
+
+
+
+export function closeARBVoting(demandId: string, roundNumber: number): Promise<ARBVotingResult> {
+  return request<ARBVotingResult>(`/api/projects/${encodeURIComponent(demandId)}/arb-voting/close`, {
+    method: "POST", body: JSON.stringify({ roundNumber }),
+  });
+}
+
+export function reopenARBVoting(demandId: string, roundNumber: number, reason: string): Promise<ARBVotingResult> {
+  return request<ARBVotingResult>(`/api/projects/${encodeURIComponent(demandId)}/arb-voting/reopen`, {
+    method: "POST", body: JSON.stringify({ roundNumber, reason }),
   });
 }

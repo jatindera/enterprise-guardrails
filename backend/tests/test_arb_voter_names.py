@@ -3,7 +3,7 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.auth import current_user
-from app.db.models import ARBVote, ARBVoteEvent, Project
+from app.db.models import ARBVote, ARBVoteEvent, ARBVotingRound, Project
 from test_project_api import client, database, payload
 
 
@@ -15,7 +15,7 @@ def voter(client, oid, name, roles=None):
 
 def vote(client, choice, reason=None, revision=0):
     return client.put("/api/projects/3601/arb-vote", json={
-        "choice": choice, "reason": reason, "expectedRevision": revision,
+        "choice": choice, "reason": reason, "expectedRevision": revision, "roundNumber": 1,
     })
 
 
@@ -63,6 +63,8 @@ def test_existing_vote_name_is_unknown_until_owner_saves_again(client, database)
     oid = uuid4()
     with Session(database) as session:
         project = session.scalar(select(Project))
+        session.add(ARBVotingRound(project_id=project.id, number=1, status="Open"))
+        session.flush()
         row = ARBVote(project_id=project.id, voter_object_id=oid, choice="Against", reason="Original reason")
         session.add(row)
         session.flush()

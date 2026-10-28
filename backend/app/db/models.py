@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     ForeignKey,
+    ForeignKeyConstraint,
     UniqueConstraint,
     CheckConstraint,
     MetaData,
@@ -135,15 +136,42 @@ class ProjectIntakeSnapshot(Base):
     )
 
 
+class ARBVotingRound(Base):
+    __tablename__ = "arb_voting_rounds"
+    __table_args__ = (
+        UniqueConstraint("project_id", "number", name="uq_arb_voting_rounds_project_number"),
+        CheckConstraint("status IN ('Open', 'Closed')", name="status"),
+        CheckConstraint("number >= 1", name="number"),
+        CheckConstraint("number = 1 OR (reopen_reason IS NOT NULL AND LTRIM(RTRIM(reopen_reason)) <> '')", name="reopen_reason"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    number: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(Unicode(6), nullable=False, default="Open")
+    opened_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+    opened_by_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    opened_by_name: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    reopen_reason: Mapped[str | None] = mapped_column(Unicode(2000), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+    closed_by_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    closed_by_name: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(Unicode(30), nullable=True)
+    closed_in_favour: Mapped[int | None] = mapped_column(nullable=True)
+    closed_against: Mapped[int | None] = mapped_column(nullable=True)
+
+
 class ARBVote(Base):
     __tablename__ = "arb_votes"
     __table_args__ = (
-        UniqueConstraint("project_id", "voter_object_id", name="uq_arb_votes_project_voter"),
+        UniqueConstraint("project_id", "round_number", "voter_object_id", name="uq_arb_votes_round_voter"),
+        ForeignKeyConstraint(["project_id", "round_number"], ["arb_voting_rounds.project_id", "arb_voting_rounds.number"],
+                             name="fk_arb_votes_round"),
         CheckConstraint("choice IN ('For', 'Against')", name="choice"),
         CheckConstraint("choice <> 'Against' OR (reason IS NOT NULL AND LTRIM(RTRIM(reason)) <> '')", name="reason"),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    round_number: Mapped[int] = mapped_column(nullable=False, default=1)
     voter_object_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     voter_name: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
     choice: Mapped[str] = mapped_column(Unicode(7), nullable=False)

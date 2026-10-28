@@ -1,26 +1,44 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import ARBVoting from "../src/ARBVoting";
+import ARBReview from "../src/ARBReview";
+import type { Project } from "../src/types";
 import type { ARBVotingResult } from "../src/api/projects";
 
 const mocks = vi.hoisted(() => ({
   roles: ["arb-core-team"],
   get: vi.fn(),
   save: vi.fn(),
+  close: vi.fn(),
+  reopen: vi.fn(),
+  update: vi.fn(),
 }));
+vi.mock("../src/ProjectUpdates", () => ({ useProjectUpdate: () => mocks.update }));
 vi.mock("../src/auth/AuthGate", () => ({ useAuth: () => ({ roles: mocks.roles }) }));
 vi.mock("../src/api/projects", () => ({
   getARBVoting: mocks.get,
   saveARBVote: mocks.save,
+  closeARBVoting: mocks.close,
+  reopenARBVoting: mocks.reopen,
 }));
 function result(changes: Partial<ARBVotingResult> = {}): ARBVotingResult {
-  return { inFavour: 0, against: 0, total: 0, canVote: true, myVote: null, votes: [], ...changes };
+  return { roundNumber: 1, currentRoundNumber: 1, status: "Open", outcome: null,
+    closedAt: null, closedByName: null, reopenReason: null, canClose: false, canReopen: false,
+    rounds: [], inFavour: 0, against: 0, total: 0, canVote: true, myVote: null, votes: [], ...changes };
 }
+beforeAll(() => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+});
+afterAll(() => vi.unstubAllGlobals());
+
 beforeEach(() => {
   mocks.roles = ["arb-core-team"];
   mocks.get.mockReset().mockResolvedValue(result());
   mocks.save.mockReset();
+  mocks.close.mockReset();
+  mocks.reopen.mockReset();
+  mocks.update.mockReset();
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 function button(name: string) {
@@ -56,7 +74,7 @@ describe("ARB voting", () => {
     await waitFor(() => expect(button("Vote in Favour").disabled).toBe(false));
     fireEvent.click(button("Vote in Favour"));
     await screen.findByText("Your vote is saved.");
-    expect(mocks.save).toHaveBeenCalledWith("3601", "For", null, 0);
+    expect(mocks.save).toHaveBeenCalledWith("3601", "For", null, 0, 1);
     expect(screen.getByText(/Your saved vote: In favour/)).toBeTruthy();
     expect(screen.getByText("In favour: 1")).toBeTruthy();
   });
@@ -74,7 +92,7 @@ describe("ARB voting", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "  Need controls  " } });
     fireEvent.click(button("Confirm vote against"));
     await screen.findByText("Your vote is saved.");
-    expect(mocks.save).toHaveBeenCalledWith("3601", "Against", "Need controls", 4);
+    expect(mocks.save).toHaveBeenCalledWith("3601", "Against", "Need controls", 4, 1);
   });
 
   it("shows a failed save without inventing success and refreshes server state", async () => {
@@ -144,4 +162,141 @@ it("labels legacy votes without inventing a name and displays their reason", asy
   await screen.findByText("Name not recorded");
   expect(screen.getByText("Member ID: legacy-object-id")).toBeTruthy();
   expect(screen.getByText("Original reason")).toBeTruthy();
+});
+
+
+
+it("lets Admin close voting, then shows locked controls and the stored outcome", async () => {
+  mocks.roles = ["Admin"];
+  const open = result({ canVote: false, canClose: true, inFavour: 1, total: 1 });
+  const closed = result({ canVote: false, canClose: false, canReopen: true,
+    inFavour: 1, total: 1, status: "Closed", outcome: "Passed",
+    closedAt: "2026-10-28T10:10:00Z", closedByName: "Chief Architect" });
+  mocks.get.mockResolvedValueOnce(open).mockResolvedValue(closed);
+  mocks.close.mockResolvedValue(closed);
+  render(<ARBVoting demandId="3601" active />);
+  await screen.findByRole("button", { name: "Close voting" });
+  fireEvent.click(button("Close voting"));
+  await screen.findByText("Voting is closed. Votes are now locked.");
+  expect(mocks.close).toHaveBeenCalledWith("3601", 1);
+  expect(screen.getByText("Passed")).toBeTruthy();
+  expect(button("Vote in Favour").disabled).toBe(true);
+  expect(button("Reopen voting").disabled).toBe(false);
+});
+
+it("requires an Admin reopen reason and starts a new empty round", async () => {
+  mocks.roles = ["Admin"];
+  const closed = result({ canVote: false, canReopen: true, status: "Closed", outcome: "Passed",
+    inFavour: 1, total: 1 });
+  const reopened = result({ canVote: false, canClose: true, roundNumber: 2, currentRoundNumber: 2,
+    reopenReason: "Updated design" });
+  mocks.get.mockResolvedValueOnce(closed).mockResolvedValue(reopened);
+  mocks.reopen.mockResolvedValue(reopened);
+  render(<ARBVoting demandId="3601" active />);
+  await screen.findByRole("button", { name: "Reopen voting" });
+  fireEvent.click(button("Reopen voting"));
+  expect(button("Confirm reopen").disabled).toBe(true);
+  fireEvent.change(screen.getByRole("textbox", { name: "Reason for reopening (required)" }),
+    { target: { value: "  Updated design  " } });
+  fireEvent.click(button("Confirm reopen"));
+  await screen.findByText("A new voting round is open. All members must vote again.");
+  expect(mocks.reopen).toHaveBeenCalledWith("3601", 1, "Updated design");
+  expect(screen.getByText("Round 2")).toBeTruthy();
+  expect(screen.getByText("In favour: 0")).toBeTruthy();
+});
+
+it("loads archived records on expansion while keeping the current round in place", async () => {
+  mocks.roles = ["Admin", "arb-core-team"];
+  const rounds = [
+    { number: 1, status: "Closed" as const, outcome: "Returned for review" as const,
+      openedAt: null, openedByName: null, reopenReason: null, closedAt: "2026-10-28T10:00:00Z",
+      closedByName: "Chief Architect" },
+    { number: 2, status: "Open" as const, outcome: null, openedAt: null, openedByName: "Chief Architect",
+      reopenReason: "Updated design", closedAt: null, closedByName: null },
+  ];
+  const current = result({ roundNumber: 2, currentRoundNumber: 2, canClose: true, rounds });
+  const history = result({ currentRoundNumber: 2, status: "Closed", outcome: "Returned for review",
+    canVote: false, canClose: false, canReopen: false, rounds, against: 1, total: 1, votes: [
+      { voterObjectId: "old-member", voterName: "Original Voter", choice: "Against", reason: "Old concern",
+        revision: 1, recordedAt: "2026-10-28T10:00:00Z" },
+    ] });
+  mocks.get.mockImplementation((_id, _signal, round) => Promise.resolve(round === 1 ? history : current));
+  render(<ARBVoting demandId="3601" active />);
+  await screen.findByText("Round 2");
+  expect(mocks.get.mock.calls.some((call) => call[2] === 1)).toBe(false);
+  fireEvent.click(screen.getByText("Previous rounds"));
+  await screen.findByText("Original Voter");
+  const archive = within(screen.getByRole("article", { name: "Round 1 archived results" }));
+  expect(archive.getByText("Old concern")).toBeTruthy();
+  expect(archive.queryByRole("button", { name: "Vote in Favour" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "View round 1" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Back to current round" })).toBeNull();
+  expect(button("Vote in Favour").disabled).toBe(false);
+  expect(screen.getByText("Round 2")).toBeTruthy();
+  expect(mocks.get.mock.calls.some((call) => call[2] === 1)).toBe(true);
+  fireEvent.click(screen.getByText("Previous rounds"));
+  await waitFor(() => expect(screen.queryByText("Original Voter")).toBeNull());
+});
+
+
+
+it("completes the current portfolio ARB only when a passed round also has EA approval", async () => {
+  mocks.roles = ["Admin"];
+  mocks.get.mockResolvedValue(result({ status: "Closed", outcome: "Passed", canVote: false,
+    canReopen: true, total: 1, inFavour: 1, closedAt: "2026-10-28T10:10:00Z" }));
+  const project = { demandId: "3601", assignedEA: "EA", arbStatus: "Not scheduled", eaStatus: "Pending" } as Project;
+  const view = render(<ARBReview project={project} canEditDocuments active />);
+  fireEvent.click(button("Core Team Vote"));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ arbStatus: "In progress", arbCompletionDate: undefined }));
+  expect(mocks.update.mock.calls.some(([patch]) => patch.arbStatus === "Completed")).toBe(false);
+  view.rerender(<ARBReview project={{ ...project, eaStatus: "Approved" }} canEditDocuments active />);
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({
+    arbStatus: "Completed", arbCompletionDate: "2026-10-28T10:10:00Z",
+  }));
+});
+
+it("clears completed portfolio status when a new voting round is active", async () => {
+  mocks.roles = ["Admin"];
+  mocks.get.mockResolvedValue(result({ roundNumber: 2, currentRoundNumber: 2,
+    canVote: false, canClose: true, reopenReason: "Re-review" }));
+  const project = { demandId: "3601", assignedEA: "EA", arbStatus: "Completed",
+    eaStatus: "Approved", arbCompletionDate: "2026-10-28T10:10:00Z" } as Project;
+  render(<ARBReview project={project} canEditDocuments active />);
+  fireEvent.click(button("Core Team Vote"));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ arbStatus: "In progress", arbCompletionDate: undefined }));
+});
+
+
+
+it("places Core Team Vote first and opens it by default", async () => {
+  const project = { demandId: "3601", assignedEA: "EA", arbStatus: "Not scheduled", eaStatus: "Pending" } as Project;
+  render(<ARBReview project={project} canEditDocuments active />);
+  const tabs = within(screen.getByRole("group", { name: "ARB review sections" })).getAllByRole("button");
+  expect(tabs.map((tab) => tab.textContent)).toEqual(["Core Team Vote", "ADR & meeting documents"]);
+  expect(tabs[0].getAttribute("aria-pressed")).toBe("true");
+  await screen.findByText("In favour: 0");
+  expect(mocks.get).toHaveBeenCalled();
+});
+
+it("can retry a history load failure without disabling current voting", async () => {
+  const rounds = [
+    { number: 1, status: "Closed" as const, outcome: "Passed" as const, openedAt: null,
+      openedByName: null, reopenReason: null, closedAt: "2026-10-28T10:00:00Z", closedByName: "Chief Architect" },
+    { number: 2, status: "Open" as const, outcome: null, openedAt: null,
+      openedByName: "Chief Architect", reopenReason: "Re-review", closedAt: null, closedByName: null },
+  ];
+  const current = result({ roundNumber: 2, currentRoundNumber: 2, rounds });
+  let failed = true;
+  mocks.get.mockImplementation((_id, _signal, round) => {
+    if (round === 1 && failed) return Promise.reject(new Error("Archive temporarily unavailable"));
+    return Promise.resolve(round === 1 ? result({ status: "Closed", canVote: false, rounds }) : current);
+  });
+  render(<ARBVoting demandId="3601" active />);
+  await screen.findByText("Round 2");
+  fireEvent.click(screen.getByText("Previous rounds"));
+  await screen.findByText("Archive temporarily unavailable");
+  expect(button("Vote in Favour").disabled).toBe(false);
+  failed = false;
+  fireEvent.click(button("Retry history"));
+  await waitFor(() => expect(screen.queryByText("Archive temporarily unavailable")).toBeNull());
 });

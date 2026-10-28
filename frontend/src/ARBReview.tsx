@@ -1,5 +1,5 @@
 import { useProjectUpdate } from "./ProjectUpdates";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ARBVoting from "./ARBVoting";
 
 import {
@@ -12,6 +12,7 @@ import {
 
 import FileDropZone from "./FileDropZone";
 import type { Project } from "./types";
+import type { ARBVotingResult } from "./api/projects";
 
 interface ARBReviewProps {
   project: Project;
@@ -59,6 +60,27 @@ const documentGroups: {
 
 export default function ARBReview({ project, canEditDocuments, active = true }: ARBReviewProps) {
   const updateProject = useProjectUpdate(project.demandId);
+  const [votingResult, setVotingResult] = useState<ARBVotingResult | null>(null);
+  useEffect(() => {
+    if (!votingResult || project.arbStatus === "Not applicable") return;
+    let status: Project["arbStatus"] | undefined;
+    let completedAt: string | undefined;
+    if (votingResult.status === "Closed") {
+      if (votingResult.outcome === "Passed" && project.eaStatus === "Approved") {
+        status = "Completed";
+        completedAt = votingResult.closedAt ?? undefined;
+      } else {
+        status = votingResult.outcome === "Returned for review" ? "Returned for review" : "In progress";
+      }
+    } else if (votingResult.roundNumber > 1 || votingResult.total > 0) {
+      status = "In progress";
+    }
+    if (status && (project.arbStatus !== status || project.arbCompletionDate !== completedAt)) {
+      // Portfolio decisions remain on the existing frontend path until assessment persistence.
+      updateProject({ arbStatus: status, arbCompletionDate: completedAt });
+    }
+  }, [votingResult, project.arbStatus, project.eaStatus, project.arbCompletionDate, updateProject]);
+
   // Retain the initial applicability during this workspace session.
   const [initiallyRequired] = useState(
     project.arbStatus !== "Not applicable",
@@ -110,7 +132,7 @@ export default function ARBReview({ project, canEditDocuments, active = true }: 
       });
     }
   }
-  const [activeTab, setActiveTab] = useState<"documents" | "vote">("documents");
+  const [activeTab, setActiveTab] = useState<"documents" | "vote">("vote");
   const [artifacts, setArtifacts] = useState<ARBArtifact[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -238,13 +260,13 @@ export default function ARBReview({ project, canEditDocuments, active = true }: 
 
       <div hidden={notApplicable}>
         <div className="meeting-review-actions" role="group" aria-label="ARB review sections">
-          <Button appearance={activeTab === "documents" ? "primary" : "secondary"}
-            aria-pressed={activeTab === "documents"} onClick={() => setActiveTab("documents")}>
-            ADR & meeting documents
-          </Button>
           <Button appearance={activeTab === "vote" ? "primary" : "secondary"}
             aria-pressed={activeTab === "vote"} onClick={() => setActiveTab("vote")}>
             Core Team Vote
+          </Button>
+          <Button appearance={activeTab === "documents" ? "primary" : "secondary"}
+            aria-pressed={activeTab === "documents"} onClick={() => setActiveTab("documents")}>
+            ADR & meeting documents
           </Button>
         </div>
 
@@ -333,7 +355,8 @@ export default function ARBReview({ project, canEditDocuments, active = true }: 
         </div>
         <div hidden={activeTab !== "vote"}>
           <ARBVoting key={project.demandId} demandId={project.demandId}
-            active={active && activeTab === "vote" && !notApplicable} />
+            active={active && activeTab === "vote" && !notApplicable}
+            onCurrentResult={setVotingResult} />
         </div>
       </div>
     </section>

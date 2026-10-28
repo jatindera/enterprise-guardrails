@@ -38,3 +38,22 @@ def test_name_migration_is_additive_and_keeps_old_votes():
     assert 'ALTER TABLE arb_votes ADD voter_name NVARCHAR(320) NULL' in sql
     assert 'ALTER TABLE arb_vote_events ADD voter_name NVARCHAR(320) NULL' in sql
     assert 'DELETE' not in sql and 'DROP' not in sql and 'UPDATE' not in sql
+
+
+def test_rounds_migration_retains_existing_votes_and_links_them_to_round_one():
+    path = Path(__file__).parents[1] / 'migrations/versions/20261028_arb_voting_rounds.py'
+    spec = spec_from_file_location('arb_voting_rounds_migration', path)
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.down_revision == '20261028_arb_voter_names'
+    output = StringIO()
+    context = MigrationContext.configure(dialect_name='mssql', opts={'as_sql': True, 'output_buffer': output})
+    with Operations.context(context):
+        module.upgrade()
+    sql = output.getvalue()
+    assert 'CREATE TABLE arb_voting_rounds' in sql
+    assert "SELECT NEWID(), id, 1, 'Open'" in sql
+    assert 'ADD round_number INTEGER NOT NULL' in sql
+    assert 'uq_arb_votes_round_voter' in sql
+    assert 'fk_arb_votes_round' in sql
+    assert 'DELETE FROM' not in sql and 'DROP TABLE' not in sql

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.auth import current_user
-from app.db.models import ARBVote, ARBVoteEvent, Project
+from app.db.models import ARBVote, ARBVoteEvent, ARBVotingRound, Project
 from test_project_api import client, database, payload
 
 
@@ -23,7 +23,7 @@ def create_project(client):
 
 def put_vote(client, choice="For", reason=None, revision=0):
     return client.put("/api/projects/3601/arb-vote", json={
-        "choice": choice, "reason": reason, "expectedRevision": revision,
+        "choice": choice, "reason": reason, "expectedRevision": revision, "roundNumber": 1,
     })
 
 
@@ -37,7 +37,7 @@ def test_non_core_cannot_vote_but_can_read(client, database, roles):
     response = put_vote(client)
     assert response.status_code == 403
     result = client.get("/api/projects/3601/arb-voting").json()
-    assert result == {"inFavour": 0, "against": 0, "total": 0, "canVote": False, "myVote": None, "votes": []}
+    assert {k: result[k] for k in ("inFavour", "against", "total", "canVote", "myVote", "votes")} == {"inFavour": 0, "against": 0, "total": 0, "canVote": False, "myVote": None, "votes": []}
     with Session(database) as session:
         assert session.scalar(select(func.count()).select_from(ARBVote)) == 0
         assert session.scalar(select(func.count()).select_from(ARBVoteEvent)) == 0
@@ -139,7 +139,7 @@ def test_missing_project_invalid_identity_and_unauthenticated_requests(client):
     create_project(client)
     set_user(client, uuid4(), ["arb-core-team"])
     assert client.get("/api/projects/9999/arb-voting").status_code == 404
-    assert client.put("/api/projects/9999/arb-vote", json={"choice": "For", "expectedRevision": 0}).status_code == 404
+    assert client.put("/api/projects/9999/arb-vote", json={"choice": "For", "expectedRevision": 0, "roundNumber": 1}).status_code == 404
     set_user(client, "not-a-uuid", ["arb-core-team"])
     assert put_vote(client).status_code == 401
     del client.app.dependency_overrides[current_user]
@@ -166,6 +166,8 @@ def test_sqlalchemy_revision_prevents_overwriting_concurrent_vote(database):
     with Session(database) as seed:
         project = Project(demand_id="3601", name="Concurrency", business_function="IT", assigned_ea="EA")
         seed.add(project)
+        seed.flush()
+        seed.add(ARBVotingRound(project_id=project.id, number=1, status="Open"))
         seed.flush()
         vote = ARBVote(project_id=project.id, voter_object_id=uuid4(), choice="For", recorded_at=utc_now())
         seed.add(vote)
