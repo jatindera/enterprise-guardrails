@@ -130,3 +130,24 @@ it("uses the server ARB applicability after reimport instead of a local override
   expect(enabled.arbStatus).toBe("Not scheduled");
   expect(enabled.arbRequired).toBe(true);
 });
+
+it("uploads raw file bytes with the access token rather than a JSON content type", async () => {
+  const { uploadGateAttachment } = await import("./projects");
+  const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: "upload-id" }));
+  vi.stubGlobal("fetch", fetchMock);
+  const file = new File(["proof"], "evidence.pdf");
+  await uploadGateAttachment("3601", "upload-id", file);
+  const options = fetchMock.mock.calls[0][1] as RequestInit;
+  expect(new Headers(options.headers).get("Content-Type")).toBe("application/octet-stream");
+  expect(new Headers(options.headers).get("Authorization")).toBe("Bearer test-access-token");
+  expect(options.body).toBe(file);
+});
+
+it("downloads authenticated binary data without treating it as JSON", async () => {
+  const { downloadGateAttachment } = await import("./projects");
+  const fetchMock = vi.fn().mockResolvedValue(new Response("proof", { headers: { "Content-Type": "application/octet-stream" } }));
+  vi.stubGlobal("fetch", fetchMock);
+  const blob = await downloadGateAttachment("3601", "saved-id");
+  expect(await blob.text()).toBe("proof");
+  expect(new Headers(fetchMock.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer test-access-token");
+});

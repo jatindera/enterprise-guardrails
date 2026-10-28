@@ -216,3 +216,21 @@ class GateDecisionEvent(Base):
     actor_object_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     actor_name: Mapped[str] = mapped_column(Unicode(320), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+
+
+class GateArtifact(Base):
+    __tablename__ = "gate_artifacts"
+    __table_args__ = (CheckConstraint("status IN ('Pending', 'Ready')", name="status"),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    file_name: Mapped[str] = mapped_column(Unicode(260), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    sha256: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    storage_account: Mapped[str] = mapped_column(Unicode(24), nullable=False)
+    container: Mapped[str] = mapped_column(Unicode(63), nullable=False)
+    blob_name: Mapped[str] = mapped_column(Unicode(300), nullable=False)
+    status: Mapped[str] = mapped_column(Unicode(7), nullable=False)
+    uploaded_by_object_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    uploaded_by_name: Mapped[str] = mapped_column(Unicode(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)

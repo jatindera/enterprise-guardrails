@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Default for newly imported projects. Leave empty to leave identity unresolved.
     default_rai_upn: str = ""
 
+    storage_account: str = ""
+    storage_container: str = "project-artifacts"
+    storage_auth_mode: Literal["azure_cli", "managed_identity"] = "azure_cli"
+    storage_managed_identity_client_id: str | None = None
+
     entra_tenant_id: str = "c643d250-0dd7-416f-889e-a93f0e4ef800"
     entra_api_client_id: str = "006da587-4ade-46a3-b651-33945cf729c3"
     entra_frontend_client_id: str = "25752e7a-693a-406c-9383-07b80b666cd3"

@@ -6,6 +6,7 @@ interface FileDropZoneProps {
   extensions: string[];
   onFiles: (files: File[]) => void;
   maxSizeMB?: number;
+  selectionMessage?: string;
 }
 
 export default function FileDropZone({
@@ -13,6 +14,7 @@ export default function FileDropZone({
   extensions,
   onFiles,
   maxSizeMB = 20,
+  selectionMessage,
 }: FileDropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
@@ -45,7 +47,7 @@ export default function FileDropZone({
     onFiles(files);
 
     setMessage(
-      `${files.length} file${files.length === 1 ? "" : "s"} added locally.`
+      selectionMessage ?? `${files.length} file${files.length === 1 ? "" : "s"} added locally.`
     );
   }
 

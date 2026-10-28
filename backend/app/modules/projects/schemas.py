@@ -15,7 +15,7 @@ class APIModel(BaseModel):
     )
 
 
-    @field_validator("created_at", "updated_at", "imported_at", "recorded_at", check_fields=False)
+    @field_validator("created_at", "updated_at", "imported_at", "recorded_at", "uploaded_at", check_fields=False)
     @classmethod
     def utc_timestamp(cls, value: datetime) -> datetime:
         # All application timestamps are UTC. SQLite test doubles may drop

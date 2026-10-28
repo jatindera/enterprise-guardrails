@@ -32,6 +32,7 @@ const baseUrl = (
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  responseKind: "json" | "blob" = "json",
 ): Promise<T> {
   const controller = new AbortController();
   const externalSignal = options.signal;
@@ -44,13 +45,14 @@ async function request<T>(
     const token = await getAccessToken();
     const headers = new Headers(options.headers);
     headers.set("Authorization", `Bearer ${token}`);
-    if (options.body) headers.set("Content-Type", "application/json");
+    if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     const response = await fetch(`${baseUrl}${path}`, {
       ...options,
       cache: "no-store",
       signal: controller.signal,
       headers,
     });
+    if (response.ok && responseKind === "blob") return await response.blob() as T;
     const body = await response.json();
     if (!response.ok) {
       const message = body?.error?.message ?? body?.detail;
@@ -328,4 +330,24 @@ export function saveGateDecision(demandId: string, domain: string, decision: imp
   return request<GateState>(`/api/projects/${encodeURIComponent(demandId)}/pre-production-gate/decisions/${encodeURIComponent(domain)}`, {
     method: "PUT", body: JSON.stringify({ decision, comments, expectedRevision }),
   });
+}
+
+
+export interface GateAttachment {
+  id: string;
+  fileName: string;
+  sizeBytes: number;
+  uploadedByName: string;
+  uploadedAt: string;
+}
+export function getGateAttachments(demandId: string, signal?: AbortSignal): Promise<{ items: GateAttachment[] }> {
+  return request(`/api/projects/${encodeURIComponent(demandId)}/pre-production-gate/attachments`, { signal });
+}
+export function uploadGateAttachment(demandId: string, id: string, file: File): Promise<GateAttachment> {
+  return request(`/api/projects/${encodeURIComponent(demandId)}/pre-production-gate/attachments/${encodeURIComponent(id)}?fileName=${encodeURIComponent(file.name)}`, {
+    method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: file,
+  });
+}
+export function downloadGateAttachment(demandId: string, id: string): Promise<Blob> {
+  return request(`/api/projects/${encodeURIComponent(demandId)}/pre-production-gate/attachments/${encodeURIComponent(id)}/download`, {}, "blob");
 }

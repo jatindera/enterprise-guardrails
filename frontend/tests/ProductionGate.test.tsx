@@ -6,7 +6,7 @@ import type { Project } from "../src/types";
 import type { GateState } from "../src/api/projects";
 const mocks = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), toggle: vi.fn(), update: vi.fn() }));
 vi.mock("../src/ProjectUpdates", () => ({ useProjectUpdate: () => mocks.update }));
-vi.mock("../src/api/projects", () => ({ getPreProductionGate: mocks.get, saveGateDecision: mocks.save, changeGateApplicability: mocks.toggle }));
+vi.mock("../src/api/projects", () => ({ getPreProductionGate: mocks.get, saveGateDecision: mocks.save, changeGateApplicability: mocks.toggle, getGateAttachments: vi.fn(async () => ({ items: [] })) }));
 beforeAll(() => vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }));
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 function state(changes: Partial<GateState> = {}): GateState {

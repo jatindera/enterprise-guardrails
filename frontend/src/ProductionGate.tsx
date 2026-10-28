@@ -3,7 +3,7 @@ import { Badge, Button, Checkbox, MessageBar, MessageBarBody, Select, Textarea }
 import { reviewSignature } from "./projectWorkflow";
 import { useProjectUpdate } from "./ProjectUpdates";
 import { changeGateApplicability, getPreProductionGate, saveGateDecision, type GateState } from "./api/projects";
-import FileDropZone from "./FileDropZone";
+import GateAttachments from "./GateAttachments";
 import type { GateDomainReview, GateReviewDecision, GateReviewDomain, Project } from "./types";
 import "./ProductionGate.css";
 
@@ -11,88 +11,7 @@ interface ProductionGateProps {
   project: Project;
   active?: boolean;
 }
-interface GateScope { label: string; reason: string; applicable: boolean; assessed: boolean; }
-interface GateEvidence { id: string; file: File; addedAt: string; }
 const decisions: GateReviewDecision[] = ["Approved", "Conditional approval", "On hold", "Rejected", "Not applicable"];
-
-function determineScope(project: Project): GateScope {
-  const raiApplicable = project.raiStatus !== "Not applicable";
-
-  const missingAssessment =
-    project.eaComplexity === "Not assessed" ||
-    project.securityRisk === "Not assessed" ||
-    (raiApplicable && project.raiRisk === "Not assessed");
-
-  if (missingAssessment) {
-    return {
-      label: "Awaiting classification",
-      reason:
-        "Some classifications have not been recorded. Confirm the review scope with the reviewers.",
-      applicable: true,
-      assessed: false,
-    };
-  }
-
-  const highEA = project.eaComplexity === "High";
-  const highSecurity = project.securityRisk === "High";
-  const highRAI = raiApplicable && project.raiRisk === "High";
-
-  if (highEA && highSecurity && highRAI) {
-    return {
-      label: "Full review",
-      reason:
-        "EA complexity, Security risk, and RAI risk are all High.",
-      applicable: true,
-      assessed: true,
-    };
-  }
-
-  if (highSecurity && highRAI) {
-    return {
-      label: "Focused review — Security and RAI",
-      reason:
-        "Review the implementation of controls addressing both High-risk domains.",
-      applicable: true,
-      assessed: true,
-    };
-  }
-
-  if (highSecurity || highRAI) {
-    return {
-      label: highSecurity
-        ? "Focused review — Security"
-        : "Focused review — RAI",
-      reason:
-        "Focus on the domain rated High and its relevant implementation evidence.",
-      applicable: true,
-      assessed: true,
-    };
-  }
-
-  const hasMediumRating =
-    project.eaComplexity === "Medium" ||
-    project.securityRisk === "Medium" ||
-    (raiApplicable && project.raiRisk === "Medium");
-
-  if (highEA || hasMediumRating) {
-    return {
-      label: "Limited review",
-      reason:
-        "Perform proportionate implementation checks for architecture complexity and applicable risks.",
-      applicable: true,
-      assessed: true,
-    };
-  }
-
-  return {
-    label: "Exempt",
-    reason:
-      "EA complexity and all applicable risk ratings are Low. Intake determines whether this gate is required.",
-    applicable: false,
-    assessed: true,
-  };
-}
-
 
 interface ReviewerCardProps {
   domain: GateReviewDomain;
@@ -155,12 +74,10 @@ export default function ProductionGate({ project, active = true }: ProductionGat
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const sequence = useRef(0);
-  const [evidence, setEvidence] = useState<GateEvidence[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const projectRef = useRef(project);
   projectRef.current = project;
-  const scope = determineScope(project);
 
   function accept(result: GateState) {
     setState(result);
@@ -206,11 +123,6 @@ export default function ProductionGate({ project, active = true }: ProductionGat
   }
   const required = state?.required === true;
   const canUpload = required && !busy && state?.reviewers.some((reviewer) => reviewer.canEdit);
-  function downloadEvidence(item: GateEvidence) {
-    const url = URL.createObjectURL(item.file);
-    const link = document.createElement("a"); link.href = url; link.download = item.file.name;
-    document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
   return (
     <section className="production-gate">
       <div className="session-heading">
@@ -228,10 +140,9 @@ export default function ProductionGate({ project, active = true }: ProductionGat
         <p className="workspace-secondary">Only Admin can change applicability. Intake Yes requires this gate; No or blank means not required.</p>
       </section>
       {state && required && <>
-        <MessageBar intent="info"><MessageBarBody>Each primary reviewer records their own decision. Saved decisions are locked until Edit decision is selected. Attachments are optional; storage integration is the next increment.</MessageBarBody></MessageBar>
+        <MessageBar intent="info"><MessageBarBody>Each primary reviewer records their own decision. Saved decisions are locked until Edit decision is selected. Attachments are optional and shared by all reviewers.</MessageBarBody></MessageBar>
         <section className="workspace-content-panel gate-section">
-          <div className="session-heading"><h3 className="session-subheading">Reviewer decisions</h3><Badge appearance="tint">{scope.label}</Badge></div>
-          <p className="workspace-secondary">{scope.reason}</p>
+          <div className="session-heading"><h3 className="session-subheading">Reviewer decisions</h3></div>
           <div className="gate-reviewer-grid">
             {state.reviewers.map((reviewer) => <ReviewerCard key={reviewer.domain} domain={reviewer.domain} reviewer={reviewer.reviewer}
               enabled={reviewer.canEdit} required={required} busy={busy} current={reviewer.current}
@@ -242,17 +153,7 @@ export default function ProductionGate({ project, active = true }: ProductionGat
           </div>
           <p className="workspace-secondary">Approved requires all three reviewers to approve. Conditional approval, On hold, Rejected, and Not applicable are shown separately. Unrecorded or reassigned reviews require a decision.</p>
         </section>
-        <section className="workspace-content-panel gate-section">
-          <h3 className="session-subheading">Supporting documents — optional</h3>
-          <p className="workspace-secondary">The attachment area is common to the reviewers. Files selected in this increment remain local and clear on refresh; ADLS uploads are not connected yet.</p>
-          <fieldset disabled={!canUpload} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
-            <FileDropZone label="Implementation evidence" extensions={[".pdf", ".docx", ".pptx", ".txt", ".md", ".csv", ".json", ".png", ".jpg", ".jpeg"]}
-              onFiles={(files) => { if (!canUpload) return; const addedAt = new Date().toISOString();
-                setEvidence((current) => [...current, ...files.map((file) => ({ id: crypto.randomUUID(), file, addedAt }))]); }} />
-          </fieldset>
-          {evidence.map((item) => <article key={item.id} className="ea-record"><strong>{item.file.name}</strong>
-            <p className="workspace-secondary">Added {new Date(item.addedAt).toLocaleString()}</p><Button onClick={() => downloadEvidence(item)}>Download</Button></article>)}
-        </section>
+        <GateAttachments key={project.demandId} demandId={project.demandId} active={active} canUpload={Boolean(canUpload)} />
         {state.history.length > 0 && <details className="workspace-content-panel gate-section"><summary>Decision history</summary>
           {state.history.map((record) => <article className="ea-record" key={record.id}>
             <strong>{record.domain} · {record.decision} · Revision {record.revision}</strong>
