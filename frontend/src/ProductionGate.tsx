@@ -292,7 +292,7 @@ export default function ProductionGate({
       <div className="session-heading">
         <div>
           <h3 className="session-subheading">
-            Production deployment gate
+            Pre-Production Gate
           </h3>
 
           <p>

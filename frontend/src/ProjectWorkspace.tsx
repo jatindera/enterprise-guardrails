@@ -40,8 +40,7 @@ type WorkspaceSection =
   | "Security record"
   | "RAI assessment"
   | "ARB review"
-  | "Production gate"
-  | "Production & LeanIX";
+  | "Production";
 
 const sections: WorkspaceSection[] = [
   "Overview",
@@ -49,8 +48,7 @@ const sections: WorkspaceSection[] = [
   "Security record",
   "RAI assessment",
   "ARB review",
-  "Production gate",
-  "Production & LeanIX",
+  "Production",
 ];
 
 // Reset workspace state when a different project is opened.
@@ -131,6 +129,9 @@ function ProjectWorkspaceContent({
   const canCloseRAI = raiAccessCurrent && raiAccess?.canClose === true;
   const [section, setSection] =
     useState<WorkspaceSection>("Overview");
+
+  const [productionTab, setProductionTab] =
+    useState<"gate" | "go-live">("gate");
 
   const [showIntake, setShowIntake] = useState(false);
 
@@ -284,11 +285,11 @@ function ProjectWorkspaceContent({
 
         <button
           type="button"
-          className={reviewCardClass("Production gate")}
-          aria-pressed={section === "Production gate"}
-          onClick={() => setSection("Production gate")}
+          className={reviewCardClass("Production")}
+          aria-pressed={section === "Production"}
+          onClick={() => setSection("Production")}
         >
-          <strong>Production gate</strong>
+          <strong>Production</strong>
           <span>{project.gateRecordedAt && !gateIsCurrent(project)
             ? "Review changed — recheck"
             : project.gateDecision ?? "Not recorded"}</span>
@@ -448,12 +449,35 @@ function ProjectWorkspaceContent({
         <ARBReview project={project} active={section === "ARB review"} canEditDocuments={eaAccess?.canEdit === true && eaAccess.revision === project.revision} />
       </div>
 
-      <div hidden={section !== "Production gate"}>
-        <ProductionGate project={project} />
-      </div>
+      <div hidden={section !== "Production"}>
+        <div
+          className="meeting-review-actions"
+          role="group"
+          aria-label="Production sections"
+        >
+          <Button
+            appearance={productionTab === "gate" ? "primary" : "secondary"}
+            aria-pressed={productionTab === "gate"}
+            onClick={() => setProductionTab("gate")}
+          >
+            Pre-Production Gate
+          </Button>
+          <Button
+            appearance={productionTab === "go-live" ? "primary" : "secondary"}
+            aria-pressed={productionTab === "go-live"}
+            onClick={() => setProductionTab("go-live")}
+          >
+            Go-Live and LeanIX
+          </Button>
+        </div>
 
-      <div hidden={section !== "Production & LeanIX"}>
-        <ProductionRecord project={project} />
+        {/* Keep both forms mounted so switching tabs preserves unsaved work. */}
+        <div hidden={productionTab !== "gate"}>
+          <ProductionGate project={project} />
+        </div>
+        <div hidden={productionTab !== "go-live"}>
+          <ProductionRecord project={project} />
+        </div>
       </div>
     </div>
   );

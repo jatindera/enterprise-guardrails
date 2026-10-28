@@ -96,6 +96,7 @@ Scoring ranges:
 | Architecture Assessment Status | In Progress |
 | Architecture Assessment Link (must be a valid URL) | Not provided (placeholder: https://) |
 | Comments | Not provided |
+| Pre-Production Gate Required | Yes |
 
 ---
 

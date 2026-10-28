@@ -153,7 +153,7 @@ export default function ProductionRecord({
       <div className="session-heading">
         <div>
           <h3 className="session-subheading">
-            Production &amp; LeanIX
+            Go-Live and LeanIX
           </h3>
 
           <p>
