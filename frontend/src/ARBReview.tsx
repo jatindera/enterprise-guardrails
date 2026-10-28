@@ -1,6 +1,6 @@
 import { useProjectUpdate } from "./ProjectUpdates";
 import { useState } from "react";
-import { useAuth } from "./auth/AuthGate";
+import ARBVoting from "./ARBVoting";
 
 import {
   Badge,
@@ -8,7 +8,6 @@ import {
   Checkbox,
   MessageBar,
   MessageBarBody,
-  Textarea,
 } from "@fluentui/react-components";
 
 import FileDropZone from "./FileDropZone";
@@ -17,6 +16,7 @@ import type { Project } from "./types";
 interface ARBReviewProps {
   project: Project;
   canEditDocuments: boolean;
+  active?: boolean;
 }
 
 type ArtifactKind =
@@ -57,8 +57,7 @@ const documentGroups: {
 
 
 
-export default function ARBReview({ project, canEditDocuments }: ARBReviewProps) {
-  const canVote = useAuth().roles.includes("arb-core-team");
+export default function ARBReview({ project, canEditDocuments, active = true }: ARBReviewProps) {
   const updateProject = useProjectUpdate(project.demandId);
   // Retain the initial applicability during this workspace session.
   const [initiallyRequired] = useState(
@@ -113,26 +112,8 @@ export default function ARBReview({ project, canEditDocuments }: ARBReviewProps)
   }
   const [activeTab, setActiveTab] = useState<"documents" | "vote">("documents");
   const [artifacts, setArtifacts] = useState<ARBArtifact[]>([]);
-  const [previewSelection, setPreviewSelection] = useState<"Against" | null>(null);
-  const [previewReason, setPreviewReason] = useState("");
-  const [previewError, setPreviewError] = useState("");
-  const [previewVote, setPreviewVote] = useState<{ choice: "For" | "Against"; at: string } | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-
-  function previewInFavour() {
-    if (!canVote) return;
-    setPreviewSelection(null);
-    setPreviewError("");
-    setPreviewVote({ choice: "For", at: new Date().toISOString() });
-  }
-
-  function previewAgainst() {
-    if (!canVote) return;
-    if (!previewReason.trim()) { setPreviewError("Please enter a reason."); return; }
-    setPreviewError("");
-    setPreviewVote({ choice: "Against", at: new Date().toISOString() });
-  }
 
   function attachFiles(files: File[], kind: ArtifactKind) {
     if (!canEditDocuments) return;
@@ -219,7 +200,8 @@ export default function ARBReview({ project, canEditDocuments }: ARBReviewProps)
 
       <MessageBar intent="info">
         <MessageBarBody>
-          Documents and voting previews are local and clear on refresh. Backend authorization, voting, and ADR generation await integration.
+          Votes are saved in the database. Documents remain local and clear on refresh;
+          document storage and ADR generation await integration.
         </MessageBarBody>
       </MessageBar>
 
@@ -350,34 +332,8 @@ export default function ARBReview({ project, canEditDocuments }: ARBReviewProps)
         </fieldset>
         </div>
         <div hidden={activeTab !== "vote"}>
-          <section className="content-panel arb-section">
-            <div className="workspace-panel-body">
-              {!canVote && <p className="workspace-secondary">Voting is available to ARB core team members.</p>}
-              <div className="meeting-review-actions">
-                <Button disabled={!canVote} appearance="primary" style={{ backgroundColor: "#168447", borderColor: "#168447", fontSize: "18px", padding: "12px 20px" }} onClick={previewInFavour}>
-                  Vote in Favour
-                </Button>
-                <Button disabled={!canVote} appearance="primary" style={{ backgroundColor: "#bb3434", borderColor: "#bb3434", fontSize: "18px", padding: "12px 20px" }} onClick={() => { setPreviewSelection("Against"); setPreviewError(""); }}>
-                  Vote Against
-                </Button>
-              </div>
-              {previewSelection === "Against" && (
-                <div>
-                  <label className="session-field">Reason for voting against (required)
-                    <Textarea disabled={!canVote} value={previewReason} required rows={3} onChange={(_, data) => setPreviewReason(data.value)} />
-                  </label>
-                  {previewError && <p role="alert">{previewError}</p>}
-                  <Button disabled={!canVote} appearance="primary" onClick={previewAgainst}>Confirm vote against</Button>
-                </div>
-              )}
-              <div style={{ marginTop: "24px" }} aria-live="polite">
-                <h3>Combined live results</h3>
-                <p>In favour: — &nbsp; · &nbsp; Against: —</p>
-                <p className="workspace-secondary">Awaiting backend integration. Results are not live yet.</p>
-                {previewVote && <p className="workspace-secondary">Local preview: {previewVote.choice === "For" ? "in favour" : "against"} · {new Date(previewVote.at).toLocaleString()} (not submitted)</p>}
-              </div>
-            </div>
-          </section>
+          <ARBVoting key={project.demandId} demandId={project.demandId}
+            active={active && activeTab === "vote" && !notApplicable} />
         </div>
       </div>
     </section>

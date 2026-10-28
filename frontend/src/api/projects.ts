@@ -62,7 +62,7 @@ async function request<T>(
   } catch (error) {
     if (externalSignal?.aborted) throw error;
     if (controller.signal.aborted) {
-      throw new Error("The API request timed out. Reload the portfolio before retrying an import; it may already have been saved.");
+      throw new Error("The API request timed out. Refresh before retrying; your changes may already have been saved.");
     }
     if (error instanceof TypeError) {
       throw new Error("Could not reach the API. Check that the backend is running.");
@@ -204,5 +204,44 @@ export function updateRAIAssignment(demandId: string, assignedRAI: string, expec
   return request<ProjectRecord>(`/api/projects/${encodeURIComponent(demandId)}/rai-assignment`, {
     method: "PATCH",
     body: JSON.stringify({ assignedRai: assignedRAI.trim(), expectedRevision }),
+  });
+}
+
+
+
+export type ARBVoteChoice = "For" | "Against";
+
+export interface ARBRecordedVote {
+  choice: ARBVoteChoice;
+  reason: string | null;
+  revision: number;
+  recordedAt: string;
+}
+
+export interface ARBVoterSummary extends ARBRecordedVote {
+  voterObjectId: string;
+  voterName: string | null;
+}
+
+export interface ARBVotingResult {
+  inFavour: number;
+  against: number;
+  total: number;
+  canVote: boolean;
+  myVote: ARBRecordedVote | null;
+  votes: ARBVoterSummary[];
+}
+
+export function getARBVoting(demandId: string, signal?: AbortSignal): Promise<ARBVotingResult> {
+  return request<ARBVotingResult>(
+    `/api/projects/${encodeURIComponent(demandId)}/arb-voting`, { signal },
+  );
+}
+
+export function saveARBVote(
+  demandId: string, choice: ARBVoteChoice, reason: string | null, expectedRevision: number,
+): Promise<ARBVotingResult> {
+  return request<ARBVotingResult>(`/api/projects/${encodeURIComponent(demandId)}/arb-vote`, {
+    method: "PUT", body: JSON.stringify({ choice, reason, expectedRevision }),
   });
 }

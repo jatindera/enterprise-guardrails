@@ -1,4 +1,5 @@
 # keep following at top of file to avoid circular imports
+from app.modules.arb.router import router as arb_voting_router
 from app.modules.projects.security_assignment_router import router as security_assignment_router
 from app.modules.projects.rai_assignment_router import router as rai_assignment_router
 from app.modules.projects.router import router as projects_router
@@ -66,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.token_verifier = TokenVerifier(settings)
     application.include_router(projects_router)
+    application.include_router(arb_voting_router)
     application.include_router(ea_assignment_router)
     application.include_router(security_assignment_router)
     application.include_router(rai_assignment_router)

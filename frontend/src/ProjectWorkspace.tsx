@@ -445,7 +445,7 @@ function ProjectWorkspaceContent({
       </div>
 
       <div hidden={section !== "ARB review"}>
-        <ARBReview project={project} canEditDocuments={eaAccess?.canEdit === true && eaAccess.revision === project.revision} />
+        <ARBReview project={project} active={section === "ARB review"} canEditDocuments={eaAccess?.canEdit === true && eaAccess.revision === project.revision} />
       </div>
 
       <div hidden={section !== "Production gate"}>

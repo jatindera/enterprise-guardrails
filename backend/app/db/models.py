@@ -3,6 +3,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     ForeignKey,
+    UniqueConstraint,
+    CheckConstraint,
     MetaData,
     Unicode,
     UnicodeText,
@@ -131,3 +133,33 @@ class ProjectIntakeSnapshot(Base):
         nullable=False,
         default=utc_now,
     )
+
+
+class ARBVote(Base):
+    __tablename__ = "arb_votes"
+    __table_args__ = (
+        UniqueConstraint("project_id", "voter_object_id", name="uq_arb_votes_project_voter"),
+        CheckConstraint("choice IN ('For', 'Against')", name="choice"),
+        CheckConstraint("choice <> 'Against' OR (reason IS NOT NULL AND LTRIM(RTRIM(reason)) <> '')", name="reason"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    voter_object_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    voter_name: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    choice: Mapped[str] = mapped_column(Unicode(7), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Unicode(2000), nullable=True)
+    revision: Mapped[int] = mapped_column(nullable=False, default=1)
+    recorded_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+    __mapper_args__ = {"version_id_col": revision}
+
+
+class ARBVoteEvent(Base):
+    __tablename__ = "arb_vote_events"
+    __table_args__ = (UniqueConstraint("vote_id", "revision", name="uq_arb_vote_events_vote_revision"),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    vote_id: Mapped[UUID] = mapped_column(ForeignKey("arb_votes.id"), nullable=False)
+    revision: Mapped[int] = mapped_column(nullable=False)
+    voter_name: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    choice: Mapped[str] = mapped_column(Unicode(7), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Unicode(2000), nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False)

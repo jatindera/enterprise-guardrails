@@ -1,0 +1,169 @@
+.arb-voting-summary {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.arb-voting-summary > h3 {
+  margin: 0 0 14px;
+  color: #172b4d;
+  font-size: 16px;
+}
+
+.arb-voting-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.arb-voters {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dce5ee;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.arb-voters-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.arb-voters--for .arb-voters-heading {
+  color: #14643f;
+  background: #edf8f1;
+  border-bottom-color: #d7eadf;
+}
+
+.arb-voters--against .arb-voters-heading {
+  color: #9c252c;
+  background: #fff2f2;
+  border-bottom-color: #f0d9db;
+}
+
+.arb-voters-heading h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.arb-voters-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid currentColor;
+  border-radius: 18px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.arb-voters-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arb-voter {
+  padding: 16px;
+}
+
+.arb-voter + .arb-voter {
+  border-top: 1px solid #edf0f4;
+}
+
+.arb-voter-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.arb-voter-avatar {
+  display: inline-flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.arb-voters--for .arb-voter-avatar {
+  color: #14643f;
+  background: #eaf5ee;
+}
+
+.arb-voters--against .arb-voter-avatar {
+  color: #9c252c;
+  background: #fcecef;
+}
+
+.arb-voter-details {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.arb-voter-name {
+  color: #172b4d;
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.arb-voter-time,
+.arb-voter-legacy,
+.arb-voters-empty {
+  color: #52647c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.arb-voter-legacy {
+  overflow-wrap: anywhere;
+}
+
+.arb-voters-empty {
+  margin: 0;
+  padding: 20px 16px;
+}
+
+.arb-voter-reason {
+  margin-top: 13px;
+  padding: 11px 13px;
+  border-left: 3px solid #d38388;
+  border-radius: 0 6px 6px 0;
+  background: #fcf7f7;
+}
+
+.arb-voter-reason-label {
+  color: #7c3a41;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.arb-voter-reason p {
+  margin: 5px 0 0;
+  color: #344054;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .arb-voting-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
