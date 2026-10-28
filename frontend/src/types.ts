@@ -25,6 +25,19 @@ export interface EAAction extends TrackedCondition {
   closedAt?: string;
 }
 
+export type GateReviewDomain = "EA" | "Security" | "RAI";
+
+export type GateReviewDecision = "Approved" | "Conditional approval" | "On hold" | "Rejected" | "Not applicable";
+
+export interface GateDomainReview {
+  decision: GateReviewDecision;
+  comments: string;
+  reviewer: string;
+  recordedAt: string;
+  reviewSignature: string;
+  evidenceFileNames: string[];
+}
+
 export interface Project {
   id?: string;
   revision?: number;
@@ -54,7 +67,9 @@ export interface Project {
   arbRequired?: boolean;
   arbCompletionDate?: string;
   gateDecision?: "Approved" | "Conditional approval" | "On hold" | "Rejected" | "Not applicable";
+  gateRequired?: boolean;
   gateScope?: string;
+  gateDomainReviews?: Partial<Record<GateReviewDomain, GateDomainReview>>;
   gateRecordedAt?: string;
   gateReviewSignature?: string;
   productionStatus?: "Not deployed" | "In production";

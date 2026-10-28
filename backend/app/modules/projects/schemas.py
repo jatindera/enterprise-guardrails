@@ -15,7 +15,7 @@ class APIModel(BaseModel):
     )
 
 
-    @field_validator("created_at", "updated_at", "imported_at", check_fields=False)
+    @field_validator("created_at", "updated_at", "imported_at", "recorded_at", check_fields=False)
     @classmethod
     def utc_timestamp(cls, value: datetime) -> datetime:
         # All application timestamps are UTC. SQLite test doubles may drop
@@ -73,6 +73,7 @@ class ProjectSummary(APIModel):
     assigned_security: str
     assigned_rai: str
     arb_required: bool
+    gate_required: bool
     revision: int
     created_at: datetime
     updated_at: datetime

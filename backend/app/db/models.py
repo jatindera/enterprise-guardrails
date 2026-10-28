@@ -81,6 +81,8 @@ class Project(Base):
         Unicode(320), nullable=False, default="Chris Cawthon", server_default="Chris Cawthon",
     )
 
+    gate_required: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="0")
+
     arb_required: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="0")
 
     revision: Mapped[int] = mapped_column(
@@ -193,3 +195,24 @@ class ARBVoteEvent(Base):
     choice: Mapped[str] = mapped_column(Unicode(7), nullable=False)
     reason: Mapped[str | None] = mapped_column(Unicode(2000), nullable=True)
     recorded_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False)
+
+
+class GateDecisionEvent(Base):
+    """Append-only decision revisions. Editing inserts a new row."""
+    __tablename__ = "gate_decision_events"
+    __table_args__ = (
+        UniqueConstraint("project_id", "domain", "revision", name="uq_gate_decisions_domain_revision"),
+        CheckConstraint("domain IN ('EA', 'Security', 'RAI')", name="domain"),
+        CheckConstraint("decision IN ('Approved', 'Conditional approval', 'On hold', 'Rejected', 'Not applicable')", name="decision"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    domain: Mapped[str] = mapped_column(Unicode(8), nullable=False)
+    revision: Mapped[int] = mapped_column(nullable=False)
+    decision: Mapped[str] = mapped_column(Unicode(30), nullable=False)
+    comments: Mapped[str] = mapped_column(Unicode(4000), nullable=False)
+    primary_object_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    reviewer_name: Mapped[str] = mapped_column(Unicode(320), nullable=False)
+    actor_object_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    actor_name: Mapped[str] = mapped_column(Unicode(320), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)

@@ -11,6 +11,7 @@ export interface ProjectRecord {
   assignedSecurity: string;
   assignedRai: string;
   arbRequired: boolean;
+  gateRequired: boolean;
   revision: number;
   createdAt: string;
   updatedAt: string;
@@ -192,6 +193,7 @@ export function projectFromApi(record: ProjectRecord, existing?: Project): Proje
     assignedSecurity: record.assignedSecurity,
     assignedRAI: record.assignedRai,
     arbRequired: record.arbRequired,
+    gateRequired: record.gateRequired,
     arbStatus: record.arbRequired
       ? (existing?.arbStatus && existing.arbStatus !== "Not applicable" ? existing.arbStatus : "Not scheduled")
       : "Not applicable",
@@ -291,5 +293,39 @@ export function reopenARBVoting(demandId: string, roundNumber: number, reason: s
 export function updateARBApplicability(demandId: string, arbRequired: boolean, expectedRevision: number): Promise<ProjectRecord> {
   return request<ProjectRecord>(`/api/projects/${encodeURIComponent(demandId)}/arb-applicability`, {
     method: "PATCH", body: JSON.stringify({ arbRequired, expectedRevision }),
+  });
+}
+
+
+export interface GateDecisionRecord {
+  id: string;
+  domain: "EA" | "Security" | "RAI";
+  revision: number;
+  decision: import("../types").GateReviewDecision;
+  comments: string;
+  reviewerName: string;
+  actorName: string;
+  recordedAt: string;
+}
+export interface GateState {
+  required: boolean;
+  projectRevision: number;
+  canChangeApplicability: boolean;
+  combinedStatus: string;
+  reviewers: { domain: "EA" | "Security" | "RAI"; reviewer: string; canEdit: boolean;
+    revision: number; current: boolean; saved: GateDecisionRecord | null }[];
+  history: GateDecisionRecord[];
+}
+export function getPreProductionGate(demandId: string, signal?: AbortSignal): Promise<GateState> {
+  return request<GateState>(`/api/projects/${encodeURIComponent(demandId)}/pre-production-gate`, { signal });
+}
+export function changeGateApplicability(demandId: string, required: boolean, expectedRevision: number): Promise<GateState> {
+  return request<GateState>(`/api/projects/${encodeURIComponent(demandId)}/pre-production-gate/applicability`, {
+    method: "PATCH", body: JSON.stringify({ required, expectedRevision }),
+  });
+}
+export function saveGateDecision(demandId: string, domain: string, decision: import("../types").GateReviewDecision, comments: string, expectedRevision: number): Promise<GateState> {
+  return request<GateState>(`/api/projects/${encodeURIComponent(demandId)}/pre-production-gate/decisions/${encodeURIComponent(domain)}`, {
+    method: "PUT", body: JSON.stringify({ decision, comments, expectedRevision }),
   });
 }

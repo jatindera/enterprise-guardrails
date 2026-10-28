@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.db.models import Project, ProjectIntakeSnapshot
+from app.modules.projects.gate_intake import gate_required_from_intake
 from app.modules.projects.arb_intake import arb_required_from_intake
 from app.modules.projects.intake_fields import reviewer_from_intake
 from app.modules.projects.architect_upn import architect_upn_from_intake, AmbiguousArchitect
@@ -67,6 +68,7 @@ def _try_resolve_import(resolver, upn, domain, demand_id):
         return None
 
 def import_project(session: Session, data: ImportProject, resolver=None, default_rai_upn="") -> tuple[ProjectDetail, bool]:
+    gate_required = gate_required_from_intake(data.markdown)
     arb_required = arb_required_from_intake(data.markdown)
     ea_from_intake = reviewer_from_intake(data.markdown, "Architect Assigned")
     security_from_intake = reviewer_from_intake(data.markdown, "Security Resource Assigned")
@@ -106,7 +108,7 @@ def import_project(session: Session, data: ImportProject, resolver=None, default
 
             if created:
                 project = Project(
-                    demand_id=data.demand_id, name=data.name, arb_required=arb_required,
+                    demand_id=data.demand_id, name=data.name, arb_required=arb_required, gate_required=gate_required,
                     business_function=data.business_function or "Not provided",
                     assigned_ea=ea_from_intake if ea_from_intake is not None else (data.assigned_ea or "Not assigned"),
                     assigned_security=security_from_intake or "Not assigned",
@@ -117,6 +119,7 @@ def import_project(session: Session, data: ImportProject, resolver=None, default
                 )
                 session.add(project)
             else:
+                project.gate_required = gate_required
                 project.arb_required = arb_required  # Latest intake supersedes Admin override.
                 project.name = data.name
                 if data.business_function is not None:

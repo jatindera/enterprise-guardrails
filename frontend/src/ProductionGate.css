@@ -1,0 +1,9 @@
+.production-gate .gate-reviewer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 18px 0; }
+.production-gate .gate-reviewer-card { background: #fff; border: 1px solid #d7e4ef; border-top: 4px solid #1769aa; border-radius: 10px; padding: 20px; min-width: 0; }
+.production-gate .gate-reviewer-card .session-heading { flex-wrap: wrap; gap: 8px; }
+.production-gate .gate-reviewer-card h3 { margin: 0; }
+.production-gate .gate-reviewer-card .session-field { margin: 16px 0; }
+.production-gate .gate-reviewer-name { background: #f0f6fc; padding: 12px; border-radius: 8px; overflow-wrap: anywhere; }
+.production-gate .gate-reviewer-name span { display: block; color: #526b83; font-size: 12px; margin-bottom: 5px; }
+.production-gate .gate-reviewer-name strong { color: #184f78; }
+@media (max-width: 1100px) { .production-gate .gate-reviewer-grid { grid-template-columns: 1fr; } }

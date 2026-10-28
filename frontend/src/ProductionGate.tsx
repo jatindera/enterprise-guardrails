@@ -1,66 +1,19 @@
-import { gateIsCurrent, reviewSignature } from "./projectWorkflow";
+import { useEffect, useRef, useState } from "react";
+import { Badge, Button, Checkbox, MessageBar, MessageBarBody, Select, Textarea } from "@fluentui/react-components";
+import { reviewSignature } from "./projectWorkflow";
 import { useProjectUpdate } from "./ProjectUpdates";
-import { useEffect, useState } from "react";
-
-import {
-  Badge,
-  Button,
-  Checkbox,
-  Input,
-  MessageBar,
-  MessageBarBody,
-  Select,
-  Textarea,
-} from "@fluentui/react-components";
-
+import { changeGateApplicability, getPreProductionGate, saveGateDecision, type GateState } from "./api/projects";
 import FileDropZone from "./FileDropZone";
-import type { Project } from "./types";
-
-type GateDecision =
-  | "Approved"
-  | "Conditional approval"
-  | "On hold"
-  | "Rejected"
-  | "Not applicable";
-
-interface GateScope {
-  label: string;
-  reason: string;
-  applicable: boolean;
-  assessed: boolean;
-}
-
-interface GateEvidence {
-  id: string;
-  file: File;
-  addedAt: string;
-}
-
-interface GateRecord {
-  id: string;
-  recordedAt: string;
-  scope: GateScope;
-  eaComplexity: Project["eaComplexity"];
-  securityRisk: Project["securityRisk"];
-  raiRisk: Project["raiRisk"];
-  raiApplicable: boolean;
-  decision: GateDecision;
-  comments: string;
-  reviewers: {
-    ea: string;
-    security: string;
-    rai: string;
-  };
-  jointConfirmed: boolean;
-  evidence: {
-    id: string;
-    fileName: string;
-  }[];
-}
+import type { GateDomainReview, GateReviewDecision, GateReviewDomain, Project } from "./types";
+import "./ProductionGate.css";
 
 interface ProductionGateProps {
   project: Project;
+  active?: boolean;
 }
+interface GateScope { label: string; reason: string; applicable: boolean; assessed: boolean; }
+interface GateEvidence { id: string; file: File; addedAt: string; }
+const decisions: GateReviewDecision[] = ["Approved", "Conditional approval", "On hold", "Rejected", "Not applicable"];
 
 function determineScope(project: Project): GateScope {
   const raiApplicable = project.raiStatus !== "Not applicable";
@@ -74,7 +27,7 @@ function determineScope(project: Project): GateScope {
     return {
       label: "Awaiting classification",
       reason:
-        "All applicable classifications are Low. The suggested scope is Exempt; reviewers may record any decision.",
+        "Some classifications have not been recorded. Confirm the review scope with the reviewers.",
       applicable: true,
       assessed: false,
     };
@@ -134,337 +87,179 @@ function determineScope(project: Project): GateScope {
   return {
     label: "Exempt",
     reason:
-      "EA complexity and all applicable risk ratings are Low. Record Not applicable for the production gate.",
+      "EA complexity and all applicable risk ratings are Low. Intake determines whether this gate is required.",
     applicable: false,
     assessed: true,
   };
 }
 
-export default function ProductionGate({
-  project,
-}: ProductionGateProps) {
-  const updateProject = useProjectUpdate(project.demandId);
-  const scope = determineScope(project);
-  const raiApplicable = project.raiStatus !== "Not applicable";
 
-  const [eaReviewer, setEAReviewer] = useState(
-    project.assignedEA ?? "",
-  );
-  const [securityReviewer, setSecurityReviewer] = useState("");
-  const [raiReviewer, setRAIReviewer] = useState("");
-
-  const [decision, setDecision] = useState<GateDecision | "">("");
-  const [comments, setComments] = useState("");
-  const [jointConfirmed, setJointConfirmed] = useState(false);
-
-  const [evidence, setEvidence] = useState<GateEvidence[]>([]);
-  const [records, setRecords] = useState<GateRecord[]>([]);
-
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-
-  const latestRecord = records[records.length - 1];
-  const currentReviewSignature = reviewSignature(project);
-
+interface ReviewerCardProps {
+  domain: GateReviewDomain;
+  reviewer: string;
+  enabled: boolean;
+  required: boolean;
+  saved?: GateDomainReview;
+  current: boolean;
+  busy: boolean;
+  onSave: (decision: GateReviewDecision, comments: string) => void;
+}
+function ReviewerCard({ domain, reviewer, enabled, required, saved, current, busy, onSave }: ReviewerCardProps) {
+  const [editing, setEditing] = useState(!saved);
+  const [decision, setDecision] = useState<GateReviewDecision | "">(saved?.decision ?? "");
+  const [comments, setComments] = useState(saved?.comments ?? "");
   useEffect(() => {
-    setJointConfirmed(false);
-  }, [currentReviewSignature]);
+    setEditing(!saved);
+    setDecision(saved?.decision ?? "");
+    setComments(saved?.comments ?? "");
+  }, [reviewer, saved?.recordedAt]);
+  const canEdit = enabled && required && !busy && editing;
+  const changed = decision !== (saved?.decision ?? "") || comments !== (saved?.comments ?? "");
+  return (
+    <section className="gate-reviewer-card" aria-label={`${domain} gate review`}>
+      <div className="session-heading">
+        <h3>{domain} review</h3>
+        <Badge appearance="tint" color={saved && current ? "success" : "informative"}>
+          {saved ? (current ? saved.decision : "Needs reconfirmation") : "Not recorded"}
+        </Badge>
+      </div>
+      <p className="gate-reviewer-name"><span>Assigned reviewer</span><strong>{reviewer || "Not assigned"}</strong></p>
+      {!canEdit && <p className="workspace-secondary">{required ? "Read-only. The assigned primary reviewer or Admin records this decision." : "Disabled — this gate is not required in the intake."}</p>}
+      <label className="session-field">
+        {domain} decision
+        <Select value={decision} disabled={!canEdit} onChange={(_, data) => setDecision(data.value as GateReviewDecision | "")}>
+          <option value="">Select a decision</option>
+          {decisions.map((item) => <option key={item} value={item}>{item}</option>)}
+        </Select>
+      </label>
+      <label className="session-field">
+        {domain} review comments
+        <Textarea value={comments} rows={4} readOnly={!canEdit} disabled={!required}
+          placeholder="Record what you verified, your rationale, and any conditions with owners and due dates."
+          onChange={(_, data) => setComments(data.value)} />
+      </label>
+      {enabled && required && saved && !editing && <Button disabled={busy} onClick={() => setEditing(true)}>Edit decision</Button>}
+      {canEdit && <Button appearance="primary" disabled={!decision || !comments.trim() || (!changed && current)}
+        onClick={() => { if (decision) onSave(decision, comments.trim()); }}>
+        Record {domain} decision
+      </Button>}
+      {canEdit && saved && <Button onClick={() => { setDecision(saved.decision); setComments(saved.comments); setEditing(false); }}>Cancel edit</Button>}
+      {saved && <p className="workspace-secondary">Recorded {new Date(saved.recordedAt).toLocaleString()}</p>}
+    </section>
+  );
+}
 
-  function markChanged() {
-    setJointConfirmed(false);
-    setError("");
-    setMessage("");
+export default function ProductionGate({ project, active = true }: ProductionGateProps) {
+  const updateProject = useProjectUpdate(project.demandId);
+  const [state, setState] = useState<GateState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const sequence = useRef(0);
+  const [evidence, setEvidence] = useState<GateEvidence[]>([]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  const scope = determineScope(project);
+
+  function accept(result: GateState) {
+    setState(result);
+    const decision = decisions.find((item) => item === result.combinedStatus);
+    const latestAt = result.history[0]?.recordedAt;
+    updateProject({ gateRequired: result.required, revision: result.projectRevision,
+      gateDecision: result.required ? decision : undefined,
+      gateRecordedAt: result.required && decision ? latestAt : undefined,
+      gateReviewSignature: result.required && decision
+        ? (projectRef.current.gateRecordedAt === latestAt && projectRef.current.gateReviewSignature
+          ? projectRef.current.gateReviewSignature : reviewSignature(projectRef.current))
+        : undefined });
   }
+  const acceptRef = useRef(accept);
+  acceptRef.current = accept;
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    async function load() {
+      if (busyRef.current || document.hidden) return;
+      const requestSequence = ++sequence.current;
+      try {
+        const result = await getPreProductionGate(project.demandId, controller.signal);
+        if (!cancelled && requestSequence === sequence.current) { acceptRef.current(result); setError(""); }
+      } catch (cause) {
+        if (!cancelled && requestSequence === sequence.current) setError(cause instanceof Error ? cause.message : "Could not load gate.");
+      }
+    }
+    void load();
+    const timer = window.setInterval(() => void load(), 15000);
+    return () => { cancelled = true; controller.abort(); window.clearInterval(timer); };
+  }, [project.demandId, active, project.gateRequired]);
 
-  function attachFiles(files: File[]) {
-    if (files.length === 0) return;
-
-    const addedAt = new Date().toISOString();
-
-    setEvidence((current) => [
-      ...current,
-      ...files.map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-        addedAt,
-      })),
-    ]);
-
-    setJointConfirmed(false);
-    setError("");
-    setMessage(
-      `${files.length} supporting document${files.length === 1 ? "" : "s"
-      } added.`,
-    );
+  async function mutate(action: () => Promise<GateState>, success: string) {
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true); ++sequence.current; setError(""); setMessage("");
+    try { acceptRef.current(await action()); setMessage(success); }
+    catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save gate.");
+      try { acceptRef.current(await getPreProductionGate(project.demandId)); } catch { setState(null); }
+    } finally { busyRef.current = false; setBusy(false); }
   }
-
+  const required = state?.required === true;
+  const canUpload = required && !busy && state?.reviewers.some((reviewer) => reviewer.canEdit);
   function downloadEvidence(item: GateEvidence) {
     const url = URL.createObjectURL(item.file);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = item.file.name;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const link = document.createElement("a"); link.href = url; link.download = item.file.name;
+    document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-
-  function saveDecision() {
-    setError("");
-    setMessage("");
-
-    if (!decision) {
-      setError("Select a decision.");
-      return;
-    }
-
-    if (
-      !eaReviewer.trim() ||
-      !securityReviewer.trim() ||
-      (raiApplicable && !raiReviewer.trim())
-    ) {
-      setError("Enter all applicable reviewer names.");
-      return;
-    }
-
-    if (!comments.trim()) {
-      setError("Enter the decision rationale and review comments.");
-      return;
-    }
-
-    const permitsProduction =
-      decision === "Approved" ||
-      decision === "Conditional approval";
-
-    if (permitsProduction && evidence.length === 0) {
-      setError(
-        "Upload supporting implementation evidence before recording approval or conditional approval.",
-      );
-      return;
-    }
-
-    if (!jointConfirmed) {
-      setError(
-        "Confirm that all applicable reviewers agreed to the decision.",
-      );
-      return;
-    }
-
-    const record: GateRecord = {
-      id: crypto.randomUUID(),
-      recordedAt: new Date().toISOString(),
-      scope: { ...scope },
-      eaComplexity: project.eaComplexity,
-      securityRisk: project.securityRisk,
-      raiRisk: project.raiRisk,
-      raiApplicable,
-      decision,
-      comments: comments.trim(),
-      reviewers: {
-        ea: eaReviewer.trim(),
-        security: securityReviewer.trim(),
-        rai: raiApplicable ? raiReviewer.trim() : "",
-      },
-      jointConfirmed,
-      evidence: evidence.map((item) => ({
-        id: item.id,
-        fileName: item.file.name,
-      })),
-    };
-
-    updateProject({
-      gateDecision: decision,
-      gateScope: scope.label,
-      gateRecordedAt: record.recordedAt,
-      gateReviewSignature: reviewSignature(project),
-    });
-    setRecords((current) => [...current, record]);
-    setMessage(
-      "Decision recorded in this workspace. Backend persistence is pending.",
-    );
-  }
-
   return (
     <section className="production-gate">
       <div className="session-heading">
-        <div>
-          <h3 className="session-subheading">
-            Pre-Production Gate
-          </h3>
-
-          <p>
-            {project.name} · Demand {project.demandId}
-          </p>
-        </div>
-
-        <Badge appearance="tint" color="brand">
-          {project.gateRecordedAt && !gateIsCurrent(project)
-            ? "Review changed — re-record decision"
-            : latestRecord?.decision ?? project.gateDecision ?? "Not recorded"}
-        </Badge>
+        <div><h3 className="session-subheading">Pre-Production Gate</h3><p>{project.name} · Demand {project.demandId}</p></div>
+        <Badge appearance="tint" color={state?.combinedStatus === "Approved" ? "success" : "informative"}>{state?.combinedStatus ?? "Loading"}</Badge>
       </div>
-
-      <MessageBar intent="info">
-        <MessageBarBody>
-          Record the joint decision and attach supporting documents.
-          Files and decisions are currently held in this workspace
-          only.
-        </MessageBarBody>
-      </MessageBar>
-
-      {error && (
-        <MessageBar intent="error">
-          <MessageBarBody>{error}</MessageBarBody>
-        </MessageBar>
-      )}
-
-      {message && (
-        <MessageBar intent="success">
-          <MessageBarBody>{message}</MessageBarBody>
-        </MessageBar>
-      )}
-
+      {error && <MessageBar intent="error"><MessageBarBody>{error}</MessageBarBody></MessageBar>}
+      {message && <MessageBar intent="success"><MessageBarBody>{message}</MessageBarBody></MessageBar>}
       <section className="workspace-content-panel gate-section">
-        <div className="session-heading">
-          <h3 className="session-subheading">Joint decision</h3>
-
-          <Badge appearance="tint" color="informative">
-            {scope.label}
-          </Badge>
-        </div>
-
-        <p className="workspace-secondary">{scope.reason}</p>
-
-        <label className="session-field">
-          EA reviewer
-          <Input
-            value={eaReviewer}
-            onChange={(_, data) => {
-              setEAReviewer(data.value);
-              markChanged();
-            }}
-          />
-        </label>
-
-        <label className="session-field">
-          Security reviewer
-          <Input
-            value={securityReviewer}
-            onChange={(_, data) => {
-              setSecurityReviewer(data.value);
-              markChanged();
-            }}
-          />
-        </label>
-
-        {raiApplicable && (
-          <label className="session-field">
-            RAI reviewer
-            <Input
-              value={raiReviewer}
-              onChange={(_, data) => {
-                setRAIReviewer(data.value);
-                markChanged();
-              }}
-            />
-          </label>
-        )}
-
-        <label className="session-field">
-          Decision
-          <Select
-            value={decision}
-            onChange={(_, data) => {
-              setDecision(data.value as GateDecision | "");
-              markChanged();
-            }}
-          >
-            <option value="">Select a decision</option>
-            <option value="Approved">Approved</option>
-            <option value="Conditional approval">
-              Conditional approval
-            </option>
-            <option value="On hold">On hold</option>
-            <option value="Rejected">Rejected</option>
-            <option value="Not applicable">Not applicable</option>
-          </Select>
-        </label>
-
-        <label className="session-field">
-          Decision rationale and review comments
-          <Textarea
-            value={comments}
-            rows={5}
-            placeholder="Record what was verified, the rationale, and any outstanding conditions with their owners and due dates."
-            onChange={(_, data) => {
-              setComments(data.value);
-              markChanged();
-            }}
-          />
-        </label>
-
-        <FileDropZone
-          label="Supporting documents"
-          extensions={[
-            ".pdf",
-            ".docx",
-            ".pptx",
-            ".txt",
-            ".md",
-            ".csv",
-            ".json",
-            ".png",
-            ".jpg",
-            ".jpeg",
-          ]}
-          onFiles={attachFiles}
-        />
-
-        {evidence.length > 0 && (
-          <div className="gate-evidence-list">
-            {evidence.map((item) => (
-              <article
-                key={item.id}
-                className="prepared-question"
-              >
-                <strong>{item.file.name}</strong>
-
-                <p className="workspace-secondary">
-                  Added {new Date(item.addedAt).toLocaleString()}
-                </p>
-
-                <Button onClick={() => downloadEvidence(item)}>
-                  Download
-                </Button>
-              </article>
-            ))}
-          </div>
-        )}
-
-        <Checkbox
-          checked={jointConfirmed}
-          label="I confirm that all applicable reviewers agreed to this decision."
-          onChange={(_, data) => {
-            setJointConfirmed(data.checked === true);
-            setError("");
-            setMessage("");
-          }}
-        />
-
-        <p className="workspace-secondary">
-          Conditional approval can permit production. Record condition
-          owners and due dates in the comments; structured follow-up
-          tracking is not yet connected. Security remains the exception
-          approval authority.
-        </p>
-
-        <Button appearance="primary" onClick={saveDecision}>
-          Record decision
-        </Button>
+        <Checkbox label="Pre-Production Gate is not applicable to this project" checked={state ? !state.required : project.gateRequired !== true}
+          disabled={!state?.canChangeApplicability || busy}
+          onChange={(_, data) => { if (state?.canChangeApplicability) void mutate(
+            () => changeGateApplicability(project.demandId, data.checked !== true, state.projectRevision),
+            "Gate applicability saved. The next intake import will apply its latest value."); }} />
+        <p className="workspace-secondary">Only Admin can change applicability. Intake Yes requires this gate; No or blank means not required.</p>
       </section>
+      {state && required && <>
+        <MessageBar intent="info"><MessageBarBody>Each primary reviewer records their own decision. Saved decisions are locked until Edit decision is selected. Attachments are optional; storage integration is the next increment.</MessageBarBody></MessageBar>
+        <section className="workspace-content-panel gate-section">
+          <div className="session-heading"><h3 className="session-subheading">Reviewer decisions</h3><Badge appearance="tint">{scope.label}</Badge></div>
+          <p className="workspace-secondary">{scope.reason}</p>
+          <div className="gate-reviewer-grid">
+            {state.reviewers.map((reviewer) => <ReviewerCard key={reviewer.domain} domain={reviewer.domain} reviewer={reviewer.reviewer}
+              enabled={reviewer.canEdit} required={required} busy={busy} current={reviewer.current}
+              saved={reviewer.saved ? { decision: reviewer.saved.decision, comments: reviewer.saved.comments,
+                reviewer: reviewer.saved.reviewerName, recordedAt: reviewer.saved.recordedAt, reviewSignature: "", evidenceFileNames: [] } : undefined}
+              onSave={(decision, comments) => { if (reviewer.canEdit && !busy) void mutate(
+                () => saveGateDecision(project.demandId, reviewer.domain, decision, comments, reviewer.revision), `${reviewer.domain} decision saved.`); }} />)}
+          </div>
+          <p className="workspace-secondary">Approved requires all three reviewers to approve. Conditional approval, On hold, Rejected, and Not applicable are shown separately. Unrecorded or reassigned reviews require a decision.</p>
+        </section>
+        <section className="workspace-content-panel gate-section">
+          <h3 className="session-subheading">Supporting documents — optional</h3>
+          <p className="workspace-secondary">The attachment area is common to the reviewers. Files selected in this increment remain local and clear on refresh; ADLS uploads are not connected yet.</p>
+          <fieldset disabled={!canUpload} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+            <FileDropZone label="Implementation evidence" extensions={[".pdf", ".docx", ".pptx", ".txt", ".md", ".csv", ".json", ".png", ".jpg", ".jpeg"]}
+              onFiles={(files) => { if (!canUpload) return; const addedAt = new Date().toISOString();
+                setEvidence((current) => [...current, ...files.map((file) => ({ id: crypto.randomUUID(), file, addedAt }))]); }} />
+          </fieldset>
+          {evidence.map((item) => <article key={item.id} className="ea-record"><strong>{item.file.name}</strong>
+            <p className="workspace-secondary">Added {new Date(item.addedAt).toLocaleString()}</p><Button onClick={() => downloadEvidence(item)}>Download</Button></article>)}
+        </section>
+        {state.history.length > 0 && <details className="workspace-content-panel gate-section"><summary>Decision history</summary>
+          {state.history.map((record) => <article className="ea-record" key={record.id}>
+            <strong>{record.domain} · {record.decision} · Revision {record.revision}</strong>
+            <p>{record.comments}</p><p className="workspace-secondary">Reviewer: {record.reviewerName} · Recorded by: {record.actorName} · {new Date(record.recordedAt).toLocaleString()}</p>
+          </article>)}
+        </details>}
+      </>}
     </section>
   );
 }

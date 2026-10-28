@@ -52,6 +52,9 @@ export function deploymentBlocker(
     return "Complete the required ARB review or mark it Not applicable.";
   }
 
+  // An explicit server-loaded exemption removes only the gate prerequisite.
+  if (project.gateRequired === false) return null;
+
   if (!gateIsCurrent(project)) {
     return (
       "Record a production gate decision against the latest " +

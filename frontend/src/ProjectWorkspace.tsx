@@ -290,7 +290,7 @@ function ProjectWorkspaceContent({
           onClick={() => setSection("Production")}
         >
           <strong>Production</strong>
-          <span>{project.gateRecordedAt && !gateIsCurrent(project)
+          <span>{project.gateRequired === false ? "Not required" : project.gateRecordedAt && !gateIsCurrent(project)
             ? "Review changed — recheck"
             : project.gateDecision ?? "Not recorded"}</span>
         </button>
@@ -473,7 +473,7 @@ function ProjectWorkspaceContent({
 
         {/* Keep both forms mounted so switching tabs preserves unsaved work. */}
         <div hidden={productionTab !== "gate"}>
-          <ProductionGate project={project} />
+          <ProductionGate project={project} active={section === "Production" && productionTab === "gate"} />
         </div>
         <div hidden={productionTab !== "go-live"}>
           <ProductionRecord project={project} />

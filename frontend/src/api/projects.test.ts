@@ -6,7 +6,7 @@ vi.mock("../auth/authClient", () => ({ getAccessToken: vi.fn(async () => "test-a
 
 const record: ProjectRecord = {
   id: "project-id", demandId: "3601", name: "Example project",
-  arbRequired: true,
+  arbRequired: true, gateRequired: false,
   businessFunction: "Water", assignedEa: "Jatinder Arora", assignedSecurity: "Christina Kelly", assignedRai: "Chris Cawthon", revision: 1,
   createdAt: "2026-10-23T00:00:00Z", updatedAt: "2026-10-23T00:00:00Z",
 };
