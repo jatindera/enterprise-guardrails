@@ -7,6 +7,7 @@ vi.mock("../auth/authClient", () => ({ getAccessToken: vi.fn(async () => "test-a
 const record: ProjectRecord = {
   id: "project-id", demandId: "3601", name: "Example project",
   arbRequired: true, gateRequired: false,
+  productionStatus: "Not deployed", goLiveDate: null, productionComments: "", productionSavedAt: null, productionSavedBy: null, productionRevision: 0,
   businessFunction: "Water", assignedEa: "Jatinder Arora", assignedSecurity: "Christina Kelly", assignedRai: "Chris Cawthon", revision: 1,
   createdAt: "2026-10-23T00:00:00Z", updatedAt: "2026-10-23T00:00:00Z",
 };
@@ -150,4 +151,11 @@ it("downloads authenticated binary data without treating it as JSON", async () =
   const blob = await downloadGateAttachment("3601", "saved-id");
   expect(await blob.text()).toBe("proof");
   expect(new Headers(fetchMock.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer test-access-token");
+});
+
+it("restores persisted production status into the portfolio stage", () => {
+  const project = projectFromApi({ ...record, productionStatus: "In production", goLiveDate: "2026-10-29", productionComments: "Verified", productionSavedAt: "2026-10-29T08:00:00Z", productionSavedBy: "EA", productionRevision: 1 });
+  expect(project.productionStatus).toBe("In production");
+  expect(project.stage).toBe("Production");
+  expect(project.goLiveDate).toBe("2026-10-29");
 });

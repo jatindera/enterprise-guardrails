@@ -476,7 +476,7 @@ function ProjectWorkspaceContent({
           <ProductionGate project={project} active={section === "Production" && productionTab === "gate"} />
         </div>
         <div hidden={productionTab !== "go-live"}>
-          <ProductionRecord project={project} />
+          <ProductionRecord project={project} active={section === "Production" && productionTab === "go-live"} />
         </div>
       </div>
     </div>

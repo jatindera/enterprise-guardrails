@@ -1,0 +1,5 @@
+.production-record .production-submit-row { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.production-record .production-submit-row .session-field { flex: 1 1 260px; margin: 0; }
+.production-record .production-submit-row > .fui-Button { min-width: 100px; }
+.production-record .production-record-panel > .fui-MessageBar { margin: 14px 0; }
+.production-record .production-record-panel summary { cursor: pointer; font-weight: 600; }

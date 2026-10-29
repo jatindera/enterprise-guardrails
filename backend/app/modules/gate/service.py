@@ -6,6 +6,8 @@ from app.db.models import GateDecisionEvent
 from app.modules.arb.service import find_project, has_role, voter_identity, voter_name
 from app.modules.gate.schemas import DecisionRecord, GateState, ReviewerState
 
+PRODUCTION_PERMITTING_DECISIONS = frozenset({"Approved", "Conditional approval", "Not applicable"})
+
 DOMAINS = {
     "EA": ("enterprise-architect", "assigned_ea"),
     "Security": ("security-engineer", "assigned_security"),
@@ -31,9 +33,9 @@ def combined_status(required, reviewers):
         return "Awaiting decisions"
     if "Conditional approval" in values:
         return "Conditional approval"
-    if all(value == "Approved" for value in values):
-        return "Approved"
-    return "Not applicable"
+    # Per-review Not applicable is equivalent to approval. Keep original
+    # decisions in history, but normalize their combined outcome.
+    return "Approved"
 
 def get_state(session, demand_id, user):
     project = find_project(session, demand_id)

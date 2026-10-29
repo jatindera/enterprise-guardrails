@@ -77,7 +77,10 @@ def test_admin_edits_create_history_and_stale_revision_conflicts(client, databas
 @pytest.mark.parametrize('choices,status', [
     (['Approved']*3, 'Approved'), (['Approved','Approved','Conditional approval'], 'Conditional approval'),
     (['Approved','On hold','Approved'], 'On hold'), (['Rejected','On hold','Approved'], 'Rejected'),
-    (['Not applicable']*3, 'Not applicable'), (['Approved','Approved','Not applicable'], 'Not applicable'),
+    (['Not applicable']*3, 'Approved'), (['Approved','Approved','Not applicable'], 'Approved'),
+    (['Approved','Conditional approval','Not applicable'], 'Conditional approval'),
+    (['Conditional approval','On hold','Not applicable'], 'On hold'),
+    (['Conditional approval','Approved','Rejected'], 'Rejected'),
 ])
 def test_combined_status_only_approves_three_approvals(client, database, choices, status):
     create(client, database)

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -15,11 +15,13 @@ class APIModel(BaseModel):
     )
 
 
-    @field_validator("created_at", "updated_at", "imported_at", "recorded_at", "uploaded_at", check_fields=False)
+    @field_validator("created_at", "updated_at", "imported_at", "recorded_at", "uploaded_at", "production_saved_at", check_fields=False)
     @classmethod
     def utc_timestamp(cls, value: datetime) -> datetime:
         # All application timestamps are UTC. SQLite test doubles may drop
         # timezone information; Azure SQL DATETIMEOFFSET preserves it.
+        if value is None:
+            return value
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
@@ -74,6 +76,12 @@ class ProjectSummary(APIModel):
     assigned_rai: str
     arb_required: bool
     gate_required: bool
+    production_status: str
+    go_live_date: date | None
+    production_comments: str
+    production_saved_at: datetime | None
+    production_saved_by: str | None
+    production_revision: int
     revision: int
     created_at: datetime
     updated_at: datetime

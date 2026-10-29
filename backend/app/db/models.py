@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -80,6 +80,13 @@ class Project(Base):
     assigned_rai: Mapped[str] = mapped_column(
         Unicode(320), nullable=False, default="Chris Cawthon", server_default="Chris Cawthon",
     )
+
+    production_status: Mapped[str] = mapped_column(Unicode(20), nullable=False, default="Not deployed", server_default="Not deployed")
+    go_live_date: Mapped[date | None] = mapped_column(nullable=True)
+    production_comments: Mapped[str] = mapped_column(Unicode(4000), nullable=False, default="", server_default="")
+    production_saved_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+    production_saved_by: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    production_revision: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
 
     gate_required: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="0")
 
@@ -234,3 +241,21 @@ class GateArtifact(Base):
     uploaded_by_name: Mapped[str] = mapped_column(Unicode(320), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
     uploaded_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+
+
+class ProductionDeploymentEvent(Base):
+    __tablename__ = "production_deployment_events"
+    __table_args__ = (
+        UniqueConstraint("project_id", "revision", name="uq_production_events_project_revision"),
+        CheckConstraint("production_status IN ('Not deployed', 'In production')", name="status"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    revision: Mapped[int] = mapped_column(nullable=False)
+    production_status: Mapped[str] = mapped_column(Unicode(20), nullable=False)
+    go_live_date: Mapped[date | None] = mapped_column(nullable=True)
+    comments: Mapped[str] = mapped_column(Unicode(4000), nullable=False)
+    actor_object_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    actor_name: Mapped[str] = mapped_column(Unicode(320), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+    gate_approval_snapshot: Mapped[str] = mapped_column(UnicodeText, nullable=False)

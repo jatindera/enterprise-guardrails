@@ -151,7 +151,7 @@ export default function ProductionGate({ project, active = true }: ProductionGat
               onSave={(decision, comments) => { if (reviewer.canEdit && !busy) void mutate(
                 () => saveGateDecision(project.demandId, reviewer.domain, decision, comments, reviewer.revision), `${reviewer.domain} decision saved.`); }} />)}
           </div>
-          <p className="workspace-secondary">Approved requires all three reviewers to approve. Conditional approval, On hold, Rejected, and Not applicable are shown separately. Unrecorded or reassigned reviews require a decision.</p>
+          <p className="workspace-secondary">Not applicable counts as Approved. Any Conditional approval makes the completed overall review Conditional approval. Rejected or On hold blocks go-live; all three current reviewer decisions must be recorded.</p>
         </section>
         <GateAttachments key={project.demandId} demandId={project.demandId} active={active} canUpload={Boolean(canUpload)} />
         {state.history.length > 0 && <details className="workspace-content-panel gate-section"><summary>Decision history</summary>

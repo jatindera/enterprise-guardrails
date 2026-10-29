@@ -1,4 +1,5 @@
 import { getAccessToken } from "../auth/authClient";
+import { deriveStage } from "../projectWorkflow";
 import type { IntakeDraft } from "../IntakeImport";
 import type { Project } from "../types";
 
@@ -12,6 +13,12 @@ export interface ProjectRecord {
   assignedRai: string;
   arbRequired: boolean;
   gateRequired: boolean;
+  productionStatus: "Not deployed" | "In production";
+  goLiveDate: string | null;
+  productionComments: string;
+  productionSavedAt: string | null;
+  productionSavedBy: string | null;
+  productionRevision: number;
   revision: number;
   createdAt: string;
   updatedAt: string;
@@ -173,7 +180,7 @@ export function importProject(draft: IntakeDraft): Promise<ProjectRecord> {
 }
 
 export function projectFromApi(record: ProjectRecord, existing?: Project): Project {
-  return {
+  const project: Project = {
     ...(existing ?? {
       stage: "Architecture review",
       eaStatus: "Pending",
@@ -196,6 +203,12 @@ export function projectFromApi(record: ProjectRecord, existing?: Project): Proje
     assignedRAI: record.assignedRai,
     arbRequired: record.arbRequired,
     gateRequired: record.gateRequired,
+    productionStatus: record.productionStatus ?? "Not deployed",
+    goLiveDate: record.goLiveDate ?? undefined,
+    productionComments: record.productionComments ?? "",
+    productionSavedAt: record.productionSavedAt ?? undefined,
+    productionSavedBy: record.productionSavedBy ?? undefined,
+    productionRevision: record.productionRevision ?? 0,
     arbStatus: record.arbRequired
       ? (existing?.arbStatus && existing.arbStatus !== "Not applicable" ? existing.arbStatus : "Not scheduled")
       : "Not applicable",
@@ -207,6 +220,7 @@ export function projectFromApi(record: ProjectRecord, existing?: Project): Proje
       ? { intakeSource: record.intakeSource ?? undefined }
       : {}),
   };
+  return { ...project, stage: deriveStage(project) };
 }
 
 
@@ -350,4 +364,29 @@ export function uploadGateAttachment(demandId: string, id: string, file: File): 
 }
 export function downloadGateAttachment(demandId: string, id: string): Promise<Blob> {
   return request(`/api/projects/${encodeURIComponent(demandId)}/pre-production-gate/attachments/${encodeURIComponent(id)}/download`, {}, "blob");
+}
+
+
+export interface ProductionDeploymentState {
+  productionStatus: "Not deployed" | "In production";
+  goLiveDate: string | null;
+  comments: string;
+  savedAt: string | null;
+  savedBy: string | null;
+  revision: number;
+  projectRevision: number;
+  canSubmit: boolean;
+  canMarkInProduction: boolean;
+  blocker: string | null;
+  history: { id: string; revision: number; productionStatus: "Not deployed" | "In production";
+    goLiveDate: string | null; comments: string; actorName: string; recordedAt: string }[];
+}
+export function getProductionDeployment(demandId: string, signal?: AbortSignal): Promise<ProductionDeploymentState> {
+  return request(`/api/projects/${encodeURIComponent(demandId)}/production-deployment`, { signal });
+}
+export function submitProductionDeployment(demandId: string, productionStatus: "Not deployed" | "In production", goLiveDate: string | null,
+  comments: string, expectedRevision: number): Promise<ProductionDeploymentState> {
+  return request(`/api/projects/${encodeURIComponent(demandId)}/production-deployment`, {
+    method: "PUT", body: JSON.stringify({ productionStatus, goLiveDate, comments, expectedRevision }),
+  });
 }

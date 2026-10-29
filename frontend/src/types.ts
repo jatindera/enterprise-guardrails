@@ -79,6 +79,8 @@ export interface Project {
   leanixUrl?: string;
   productionComments?: string;
   productionSavedAt?: string;
+  productionSavedBy?: string;
+  productionRevision?: number;
   securityConditions?: TrackedCondition[];
   raiConditions?: TrackedCondition[];
   intakeSource?: {
