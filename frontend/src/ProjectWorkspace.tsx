@@ -315,7 +315,7 @@ function ProjectWorkspaceContent({
             aria-pressed={section === item}
             onClick={() => setSection(item)}
           >
-            {item}
+            {item === "Security record" ? "Security assessment" : item}
           </Button>
         ))}
       </nav>

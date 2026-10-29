@@ -1,0 +1,45 @@
+.content-panel.ea-technology-stack {
+  margin-top: 18px;
+  border: 1px solid #c9deef;
+  border-left: 4px solid #2178b9;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ea-technology-stack > .panel-heading {
+  background: #edf5fd;
+  border-bottom: 1px solid #c9deef;
+}
+.ea-technology-stack > .panel-heading h2 { color: #155b8e; }
+.ea-technology-stack > .workspace-panel-body { background: #f8fbff; }
+.ea-technology-options {
+  border: 0;
+  padding: 0;
+  margin: 16px 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 20px;
+}
+.ea-tech-legend { font-weight: 600; color: #234d6f; margin-bottom: 12px; }
+.ea-technology-stack .ea-other-technologies { max-width: 560px; margin-top: 16px; }
+.ea-accepted-review-reference { border: 1px solid #dce6ef; border-radius: 8px; margin-bottom: 20px; background: #f8fbff; }
+.ea-accepted-review-reference > summary { cursor: pointer; padding: 12px 16px; color: #195d8c; font-weight: 600; }
+.ea-accepted-review-reference > .workspace-panel-body { padding-top: 4px; }
+
+/* Align every checkbox and label to the top of its grid cell. */
+.ea-technology-options {
+  align-items: start;
+}
+
+.ea-technology-options .fui-Checkbox {
+  align-self: start;
+  align-items: flex-start;
+}
+
+.ea-technology-options .fui-Checkbox__label {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  line-height: 20px;
+}

@@ -38,6 +38,24 @@ export interface GateDomainReview {
   evidenceFileNames: string[];
 }
 
+export type EATechnology =
+  | "Azure"
+  | "Foundry"
+  | "Copilot Studio"
+  | "M365 agent"
+  | "Power Apps"
+  | "Databricks"
+  | "SAP BTP"
+  | "Salesforce"
+  | "SaaS / Third-party service"
+  | "External APIs"
+  | "Networking / Connectivity"
+  | "Microsoft 365 / SharePoint"
+  | "Power Automate"
+  | "Power BI"
+  | "On-premises systems"
+  | "Others";
+
 export interface Project {
   id?: string;
   revision?: number;
@@ -89,6 +107,8 @@ export interface Project {
     importedAt: string;
   };
   eaItems?: EAAction[];
+  eaTechnologyStack?: EATechnology[];
+  eaTechnologyStackOther?: string;
 }
 
 export type PortfolioFilter =

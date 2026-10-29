@@ -71,7 +71,6 @@ function captureModeLabel(
 
 export default function ReviewSession({
   project,
-  heading = "Shared review session",
   facilitatorName = project.assignedEA,
   preparationDomain = "EA",
   canEditOverride,
@@ -233,7 +232,6 @@ export default function ReviewSession({
     <section className="review-session">
       <div className="session-heading">
         <div>
-          <h2>{heading}</h2>
           <p>
             Demand #{project.demandId} · Facilitator:{" "}
             {facilitatorName}
