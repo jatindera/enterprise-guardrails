@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 from azure.core.exceptions import ResourceNotFoundError
+from azure.ai.projects.models import AgentVersionStatus
 from app.deployment.ea_hosted import Release, definition_for, fingerprint, deploy, wait_for_active, smoke_test
 from app.agents.config import FoundrySettings
 
@@ -143,3 +144,35 @@ def test_access_failure_is_not_misinterpreted_as_a_missing_agent():
     p=project();p.agents.list_versions.side_effect=HttpResponseError('Forbidden')
     with pytest.raises(HttpResponseError):deploy(p,release(),'gpt-5.5','enterprise-architecture-agent')
     p.agents.create_version.assert_not_called()
+
+
+@pytest.mark.parametrize("status", ["active", AgentVersionStatus.ACTIVE])
+def test_sdk_active_status_exits_without_sleep(status):
+    agents = Mock()
+    current = SimpleNamespace(status=status)
+    agents.get_version.return_value = current
+    sleep = Mock()
+    assert wait_for_active(agents, "agent", "1", sleep=sleep) is current
+    sleep.assert_not_called()
+
+
+def test_retry_reuses_sdk_enum_active_version():
+    from azure.ai.projects.models import AgentVersionStatus
+    p = project()
+    definition = definition_for(release(), "gpt-5.5")
+    p.agents.list_versions.return_value = [SimpleNamespace(
+        metadata={"eg_release": fingerprint(definition)}, definition=definition,
+        status=AgentVersionStatus.ACTIVE, version="1")]
+    p.agents.get_version.return_value = SimpleNamespace(status=AgentVersionStatus.ACTIVE)
+    assert deploy(p, release(), "gpt-5.5", "enterprise-architecture-agent")["agentVersion"] == "1"
+    p.agents.create_version.assert_not_called()
+
+
+def test_sdk_failed_status_fails_without_sleep():
+    from azure.ai.projects.models import AgentVersionStatus
+    agents = Mock()
+    agents.get_version.return_value = SimpleNamespace(status=AgentVersionStatus.FAILED)
+    sleep = Mock()
+    with pytest.raises(RuntimeError, match="failed"):
+        wait_for_active(agents, "agent", "1", sleep=sleep)
+    sleep.assert_not_called()

@@ -49,11 +49,16 @@ def fingerprint(definition):
     return hashlib.sha256(json.dumps(definition.as_dict(), sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def status_value(status):
+    """Read SDK enum values while also accepting plain API strings."""
+    return str(getattr(status, "value", status)).lower()
+
+
 def wait_for_active(agents, name, version, timeout=900, *, clock=time.monotonic, sleep=time.sleep):
     deadline = clock() + timeout
     while clock() < deadline:
         current = agents.get_version(agent_name=name, agent_version=version)
-        status = str(current.status)
+        status = status_value(current.status)
         print(f'Agent version {version}: {status}', flush=True)
         if status == 'active':
             return current
@@ -76,7 +81,7 @@ def deploy(project, release: Release, model: str, name: str, registry_connection
             for existing in project.agents.list_versions(agent_name=name, order='desc', limit=1, include_drafts=False):
                 # Reuse on task retry; an identical image is insufficient if configuration changed.
                 if (existing.metadata.get('eg_release') == digest
-                    and str(existing.status) in {'creating', 'active'}
+                    and status_value(existing.status) in {'creating', 'active'}
                     and fingerprint(existing.definition) == digest):
                     selected = existing
                 # Only reuse the latest release; reusing an older match would leave
