@@ -1,0 +1,148 @@
+# Repository root. Manual Dev deployments only; Production will use a separate connection/environment.
+trigger: none
+pr: none
+
+parameters:
+- name: acrName
+  displayName: Existing Dev Azure Container Registry name
+  type: string
+  default: egguardrailsacrdev
+- name: registryConnection
+  displayName: Optional Foundry registry connection name (leave default for project MI access)
+  type: string
+  default: none
+
+variables:
+  azureConnection: sc-enterprise-guardrails-dev
+  resourceGroup: rg-enterprise-guardrails-dev
+  foundryEndpoint: https://eg-foundry-main.services.ai.azure.com/api/projects/enterprise-guardrails
+  modelDeployment: gpt-5.5
+  agentResourceName: enterprise-architecture-agent
+  imageRepository: enterprise-architecture-agent
+
+pool:
+  vmImage: ubuntu-24.04
+
+stages:
+- stage: Validate
+  jobs:
+  - job: Test
+    steps:
+    - checkout: self
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.12'
+    - bash: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        sudo apt-get install -y libodbc2
+        python -m pip install uv==0.13.4
+        uv sync --locked
+        uv run python -m pytest -q --junitxml=test-results.xml
+      workingDirectory: backend
+      displayName: Install locked dependencies and test backend
+    - task: PublishTestResults@2
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFormat: JUnit
+        testResultsFiles: backend/test-results.xml
+        failTaskOnFailedTests: true
+
+- stage: Build
+  dependsOn: Validate
+  jobs:
+  - job: BuildPush
+    steps:
+    - checkout: self
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.12'
+    - bash: |
+        set -euo pipefail
+        python -m pip install uv==0.13.4
+        uv sync --locked --no-dev
+      workingDirectory: backend
+      displayName: Install release tooling
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        workingDirectory: backend
+        inlineScript: |
+          set -euo pipefail
+          [[ "$ACR_NAME" =~ ^[a-z0-9]{5,50}$ ]] || { echo 'Invalid ACR name'; exit 1; }
+          registry_server=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query loginServer -o tsv)
+          [[ "$registry_server" =~ ^[a-z0-9.-]+\.azurecr\.io$ ]] || { echo 'Invalid registry server'; exit 1; }
+          az acr login --name "$ACR_NAME"
+          image_tag="$registry_server/$IMAGE_REPOSITORY:build-$BUILD_ID-$JOB_ATTEMPT"
+          docker build --platform linux/amd64 -f deployment/ea-agent/Dockerfile -t "$image_tag" .
+          docker push "$image_tag"
+          digest=$(az acr repository show --name "$ACR_NAME" --image "$IMAGE_REPOSITORY:build-$BUILD_ID-$JOB_ATTEMPT" --query digest -o tsv)
+          uv run --no-sync python -m app.deployment.ea_hosted manifest \
+            --image "$registry_server/$IMAGE_REPOSITORY@$digest" \
+            --source-commit "$SOURCE_COMMIT" --build-id "$BUILD_ID" \
+            --output "$RELEASE_DIR/image-manifest.json"
+      env:
+        ACR_NAME: ${{ parameters.acrName }}
+        RESOURCE_GROUP: $(resourceGroup)
+        IMAGE_REPOSITORY: $(imageRepository)
+        BUILD_ID: $(Build.BuildId)
+        JOB_ATTEMPT: $(System.JobAttempt)
+        SOURCE_COMMIT: $(Build.SourceVersion)
+        RELEASE_DIR: $(Build.ArtifactStagingDirectory)/ea-agent-release
+      displayName: Build image, push with Entra login, record immutable digest
+    - publish: $(Build.ArtifactStagingDirectory)/ea-agent-release
+      artifact: ea-agent-release
+
+- stage: DeployDev
+  dependsOn: Build
+  lockBehavior: sequential
+  jobs:
+  - deployment: DeployEA
+    environment: enterprise-guardrails-dev
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - download: current
+            artifact: ea-agent-release
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.12'
+          - bash: |
+              set -euo pipefail
+              python -m pip install uv==0.13.4
+              uv sync --locked --no-dev
+            workingDirectory: backend
+            displayName: Install pinned deployment SDK
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(azureConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: backend
+              inlineScript: |
+                set -euo pipefail
+                connection_args=()
+                if [[ "$REGISTRY_CONNECTION" != "none" && -n "${REGISTRY_CONNECTION// /}" ]]; then connection_args=(--registry-connection "$REGISTRY_CONNECTION"); fi
+                uv run --no-sync python -m app.deployment.ea_hosted deploy \
+                  --manifest "$MANIFEST_PATH" --project-endpoint "$PROJECT_ENDPOINT" \
+                  --model "$MODEL_DEPLOYMENT" --agent-name "$AGENT_RESOURCE_NAME" \
+                  --output "$DEPLOYMENT_DIR/deployment.json" "${connection_args[@]}"
+            env:
+              MANIFEST_PATH: $(Pipeline.Workspace)/ea-agent-release/image-manifest.json
+              PROJECT_ENDPOINT: $(foundryEndpoint)
+              MODEL_DEPLOYMENT: $(modelDeployment)
+              AGENT_RESOURCE_NAME: $(agentResourceName)
+              REGISTRY_CONNECTION: ${{ parameters.registryConnection }}
+              DEPLOYMENT_DIR: $(Build.ArtifactStagingDirectory)/ea-agent-deployment
+            displayName: Deploy hosted version, wait, smoke-test, stop synthetic session
+          - bash: mkdir -p "$DEPLOYMENT_DIR"
+            condition: always()
+            env:
+              DEPLOYMENT_DIR: $(Build.ArtifactStagingDirectory)/ea-agent-deployment
+          - publish: $(Build.ArtifactStagingDirectory)/ea-agent-deployment
+            artifact: ea-agent-deployment
+            condition: always()
