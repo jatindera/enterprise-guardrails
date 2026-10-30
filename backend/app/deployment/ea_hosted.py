@@ -13,6 +13,7 @@ from azure.ai.projects.models import (AgentEndpointProtocol, ContainerConfigurat
 from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import AzureCliCredential
 from app.agents.config import FoundrySettings
+from app.deployment.errors import error_details, field, operation
 
 
 class Release(BaseModel):
@@ -57,7 +58,9 @@ def wait_for_active(agents, name, version, timeout=900, *, clock=time.monotonic,
         if status == 'active':
             return current
         if status in {'failed', 'deleting', 'deleted'}:
-            raise RuntimeError(f'Hosted version {version} is {status}; inspect its Foundry deployment logs.')
+            error = RuntimeError(f'Hosted version {version} is {status}; inspect its Foundry deployment logs.')
+            error.error = field(current, 'error')
+            raise error
         sleep(min(5, max(0, deadline - clock())))
     raise TimeoutError('Hosted provisioning did not complete before the deployment deadline.')
 
@@ -69,33 +72,37 @@ def deploy(project, release: Release, model: str, name: str, registry_connection
     digest = fingerprint(definition)
     selected = None
     try:
-        for existing in project.agents.list_versions(agent_name=name, order='desc', limit=1, include_drafts=False):
-            # Reuse on task retry; an identical image is insufficient if configuration changed.
-            if (existing.metadata.get('eg_release') == digest
-                and str(existing.status) in {'creating', 'active'}
-                and fingerprint(existing.definition) == digest):
-                selected = existing
-            # Only reuse the latest release; reusing an older match would leave
-            # the normal Dev endpoint serving a different release.
-            break
+        with operation('list_versions'):
+            for existing in project.agents.list_versions(agent_name=name, order='desc', limit=1, include_drafts=False):
+                # Reuse on task retry; an identical image is insufficient if configuration changed.
+                if (existing.metadata.get('eg_release') == digest
+                    and str(existing.status) in {'creating', 'active'}
+                    and fingerprint(existing.definition) == digest):
+                    selected = existing
+                # Only reuse the latest release; reusing an older match would leave
+                # the normal Dev endpoint serving a different release.
+                break
     except ResourceNotFoundError:
         pass
     if selected is None:
-        selected = project.agents.create_version(agent_name=name, definition=definition, draft=False,
-            metadata={'eg_release': digest, 'source_commit': release.source_commit, 'build_id': release.build_id},
-            description='Enterprise Guardrails EA preparation agent')
-    wait_for_active(project.agents, name, selected.version, timeout)
+        with operation('create_version'):
+            selected = project.agents.create_version(agent_name=name, definition=definition, draft=False,
+                metadata={'eg_release': digest, 'source_commit': release.source_commit, 'build_id': release.build_id},
+                description='Enterprise Guardrails EA preparation agent')
+    with operation('get_version / wait_for_active'):
+        wait_for_active(project.agents, name, selected.version, timeout)
     return {'agentName': name, 'agentVersion': selected.version, 'image': release.image,
         'sourceCommit': release.source_commit, 'buildId': release.build_id, 'releaseFingerprint': digest}
 
 
 def smoke_test(project, name, version):
     # Explicit session pins the smoke test to the candidate, not an endpoint's latest selector.
-    session = project.agents.create_session(agent_name=name,
-        version_indicator=VersionRefIndicator(agent_version=version))
+    with operation('create_session'):
+        session = project.agents.create_session(agent_name=name,
+            version_indicator=VersionRefIndicator(agent_version=version))
     session_id = session.agent_session_id
     try:
-        with project.get_openai_client(agent_name=name, timeout=180, max_retries=0) as client:
+        with operation('hosted responses.create'), project.get_openai_client(agent_name=name, timeout=180, max_retries=0) as client:
             response = client.responses.create(
                 input='In one short sentence, explain what an enterprise architect does. Do not approve any project.',
                 store=False, stream=False, extra_body={'agent_session_id': session_id})
@@ -104,7 +111,14 @@ def smoke_test(project, name, version):
         print('Hosted smoke test passed.', flush=True)
     finally:
         # Stop only this synthetic session; never touch user sessions.
-        project.agents.stop_session(agent_name=name, session_id=session_id)
+        original_error = sys.exception()
+        try:
+            with operation('stop synthetic session'):
+                project.agents.stop_session(agent_name=name, session_id=session_id)
+        except Exception as cleanup_error:
+            if original_error is None:
+                raise
+            print('Session cleanup error: ' + json.dumps(error_details(cleanup_error)), file=sys.stderr, flush=True)
 
 
 def main():
@@ -136,7 +150,8 @@ def main():
         result = deploy(project, release, settings.model_deployment_name, args.agent_name, args.registry_connection or None)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps({**result, 'smokeTest': 'pending'}, indent=2), encoding='utf-8')
-        smoke_test(project, args.agent_name, result['agentVersion'])
+        with operation('smoke_test'):
+            smoke_test(project, args.agent_name, result['agentVersion'])
         args.output.write_text(json.dumps({**result, 'smokeTest': 'passed'}, indent=2), encoding='utf-8')
 
 
@@ -144,7 +159,5 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as exc:
-        status = getattr(exc, 'status_code', None)
-        print(f'Deployment failed: {type(exc).__name__}' + (f' (HTTP {status})' if status else '') +
-            '. Check configuration, Azure permissions, ACR access, and Foundry deployment logs.', file=sys.stderr)
+        print('Deployment error: ' + json.dumps(error_details(exc)), file=sys.stderr, flush=True)
         raise SystemExit(1) from None
