@@ -15,8 +15,8 @@ def build_server(settings: FoundrySettings) -> ResponsesHostServer:
 
 def main():
     settings = FoundrySettings()
-    # Local testing only. Foundry containers set AGENT_HOST_BIND=0.0.0.0.
-    bind = os.environ.get('AGENT_HOST_BIND', '127.0.0.1')
+    # Local testing only. Foundry containers set EG_HOST_BIND=0.0.0.0.
+    bind = os.environ.get('EG_HOST_BIND', '127.0.0.1')
     build_server(settings).run(host=bind, port=8088)
 
 

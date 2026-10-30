@@ -38,9 +38,9 @@ def definition_for(release: Release, model: str, registry_connection: str | None
     return HostedAgentDefinition(cpu='1', memory='2Gi', container_configuration=container,
         protocol_versions=[ProtocolVersionRecord(protocol=AgentEndpointProtocol.RESPONSES, version='2.0.0')],
         environment_variables={
-            # FOUNDRY_* is reserved for platform injection in hosted deployments.
+            # FOUNDRY_* and AGENT_* are reserved for platform injection.
             'MODEL_DEPLOYMENT_NAME': model, 'EG_AGENT_AUTH_MODE': 'managed_identity',
-            'PYTHONNOUSERSITE': '1', 'AGENT_HOST_BIND': '0.0.0.0',
+            'PYTHONNOUSERSITE': '1', 'EG_HOST_BIND': '0.0.0.0',
             'OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT': 'false', 'ENABLE_SENSITIVE_DATA': 'false',
         }, session_configuration=SessionConfiguration(idle_timeout_seconds=120))
 

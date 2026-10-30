@@ -1,7 +1,7 @@
 # Build context must be the backend directory. Deployment is a later increment.
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONNOUSERSITE=1 \
-    EG_AGENT_AUTH_MODE=managed_identity AGENT_HOST_BIND=0.0.0.0 \
+    EG_AGENT_AUTH_MODE=managed_identity EG_HOST_BIND=0.0.0.0 \
     OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=false ENABLE_SENSITIVE_DATA=false
 WORKDIR /app
 COPY deployment/ea-agent/requirements.lock /app/requirements.lock

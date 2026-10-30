@@ -33,8 +33,9 @@ def test_definition_uses_installed_sdk_and_no_platform_reserved_env_override():
     assert definition.container_configuration.image==release().image
     assert definition.cpu=='1' and definition.memory=='2Gi'
     assert definition.session_configuration.as_dict()['idle_timeout_seconds']==120
-    assert not any(key.startswith('FOUNDRY_') for key in definition.environment_variables)
+    assert not any(key.startswith(('FOUNDRY_', 'AGENT_')) for key in definition.environment_variables)
     assert definition.environment_variables['EG_AGENT_AUTH_MODE']=='managed_identity'
+    assert definition.environment_variables['EG_HOST_BIND']=='0.0.0.0'
     assert definition.protocol_versions[0].protocol=='responses'
     assert definition.environment_variables['OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT']=='false'
 
