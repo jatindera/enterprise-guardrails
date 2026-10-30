@@ -55,10 +55,10 @@ def hosted_invoker():
 @router.post('/{demand_id}/ea-preparation/questions', response_model=QuestionsReply)
 def questions(demand_id: DemandId, session: SessionDep, user: UserDep, invoke=Depends(hosted_invoker)):
     context = authorized_context(session, demand_id, user)
-    task = ('Prepare 6 to 8 concise EA interview questions based on this intake, prioritizing missing facts. '
-        'Do not assume a final technology stack or invent policies. Return ONLY valid JSON, no Markdown, '
-        'with exactly this shape: {"questions":[{"question":"...","reason":"...",'
-        '"priority":"Essential"}]}. Priority must be Essential or Follow-up. Questions are drafts for EA review.')
+    task = ('Generate up to 8 concise EA meeting questions about important gaps in this project context. '
+        'Avoid repetition, assumptions, and invented policies. Return only JSON: '
+        '{"questions":[{"question":"...","reason":"brief reason","priority":"Essential"}]}. '
+        'Priority: Essential or Follow-up.')
     return complete(context, task, QuestionsReply, invoke)
 
 

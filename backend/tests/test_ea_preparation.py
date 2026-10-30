@@ -40,7 +40,9 @@ def test_permissions_and_server_context(client, database, oid, roles, expected):
     assert response.status_code == expected
     if expected == 200:
         sent = json.loads(invoke.call_args.args[0])
-        assert sent['project_context']['demand_id'] == '3601'
+        assert 'demand_id' not in sent['project_context']
+        assert 'intake' not in sent['project_context']
+        assert sent['project_context']['project_name'] == 'Example project'
         assert 'Reduce manual work' in json.dumps(sent)
         assert response.json()['questions'][0] == QUESTION
     else:

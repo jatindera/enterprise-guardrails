@@ -1,16 +1,16 @@
-Copy the included backend and frontend files into your existing project folders. Keep all earlier integration and chat-animation changes. Restart FastAPI and refresh/restart the frontend. No .env changes, migration, dependency installation or hosted-agent deployment is needed.
+Copy the included backend files into the matching folders and restart FastAPI. No frontend change, database migration, .env change or hosted-agent redeployment is required: this changes the payload constructed in FastAPI, not the deployed agent's core instructions. Do not run the deployment pipeline just for this update.
 
-Changes:
-- EA chat now defaults to answering explanatory questions without a meeting-question proposal. Proposals are requested only when explicitly asked for or a specific missing project fact is necessary, and must stay focused on one issue relevant to the current topic. AI relevance still needs reviewer judgment.
-- Once EA AI questions exist, the button reads Regenerate AI questions.
-- A successful regeneration replaces only unselected EA AI questions. Manual questions, selected questions, and other domains are preserved with their existing IDs and selection states. New questions start unselected. Duplicates within the response or against preserved EA questions are skipped.
-- Failed regeneration preserves the original question list.
-- Security and RAI question-generation behavior is unchanged.
+Both EA Prepare question generation and preparation chat now receive only:
+- Project name
+- Business function
+- Problem Statement
+- Value Description
+- Desired Business Outcome
 
-Test:
-1. Ask the chat to explain a concept. It should normally answer without adding a proposed meeting question. Start a fresh chat for a clean test.
-2. Explicitly ask for one meeting question about SDK dependency vulnerabilities. Expect a short focused question, rather than a bundled evidence request. Web search is not yet connected, so confirmed current vulnerabilities cannot be verified through search.
-3. Generate EA questions, select one, and add a manual question. Click Regenerate AI questions twice. The manual and selected questions must remain, and only the unselected AI set should be refreshed rather than accumulating another full set each time.
-4. Test an invalid agent version: regeneration should show an error and keep the original list. Restore the valid version and restart the backend.
+Demand ID still identifies the correct project in the API and database, but is no longer automatically sent in project context. The complete intake stays in SQL. Stakeholders/emails, sourceFields, repeated narratives, import metadata, other intake facts, null and whitespace-only fields are excluded by an explicit allowlist. Non-empty narratives are sent verbatim, with no extra summarization/model call. The small intake-reported/unverified label is retained. Chat continues to receive its bounded user/assistant conversation history; this change does not strip information the user includes in chat.
 
-Verified: 12 targeted backend tests, seven targeted frontend tests and the production frontend build passed. Model phrasing and relevance should be checked live through the UI.
+The generation task prompt is shorter and requests up to eight concise questions, while retaining the required JSON response structure. Core agent instructions, model choice, token limits, reviewer permissions and meeting question persistence are unchanged. This also changes the input made by the local developer test_ea_agent script because it shares the same preparation payload builder.
+
+Verification: from backend run `uv run python -m pytest tests/test_ea_agent_foundation.py tests/test_ea_preparation.py -q`. Tests cover the explicit allowlist, absent Demand ID, preserved narrative text, omitted empty fields, oversized payload rejection, installed MAF request handling and EA API access.
+
+In the app, generate questions once and inspect the new Foundry request payload. Its project_context should contain only the five allowed non-empty fields. The supplied example shrinks from 17,767 to 1,797 context characters (about 90%). This is not a promised 90% billing reduction; compare actual input/output/reasoning-token usage for equivalent requests. Other facts remain in SQL but are not available to the agent in this minimal-context increment.

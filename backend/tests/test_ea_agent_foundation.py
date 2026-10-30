@@ -1,5 +1,6 @@
 """SDK and boundary tests; no Azure token or model request is made."""
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 import pytest
@@ -79,11 +80,11 @@ def test_managed_identity_is_selected_explicitly_and_resources_close():
     asyncio.run(run())
 
 
-def test_structured_input_labels_provenance_and_keeps_boolean_false():
+def test_structured_input_sends_only_preparation_context():
     import json
     message = json.loads(preparation_input(context(), 'Which integrations should I clarify?'))
-    assert message['project_context']['demand_id'] == '3845'
-    assert message['project_context']['intake']['facts']['aiEffort'] is False
+    assert message['project_context'] == {'project_name': 'Reporting', 'business_function': 'IT', 'problem_statement': 'Manual reporting'}
+    assert '3845' not in json.dumps(message)
     assert 'not independently verified' in message['context_status']
     assert 'markdown' not in message
 
@@ -122,7 +123,8 @@ def test_service_uses_fresh_agents_and_releases_resources(monkeypatch):
         assert await ask(context(), 'Clarify', settings()) == 'Reply'
     asyncio.run(run())
     assert len(agents) == 2 and all(agent.closed for agent in agents)
-    assert '3845' in agents[0].run.call_args.args[0]
+    assert 'Manual reporting' in agents[0].run.call_args.args[0]
+    assert '3845' not in agents[0].run.call_args.args[0]
     assert 'session' not in agents[0].run.call_args.kwargs
 
 
@@ -178,7 +180,8 @@ def test_real_maf_execution_passes_instructions_and_structured_input_without_net
     assert request['store'] is False
     assert request['max_output_tokens'] == 2000
     assert request['model'] == 'deployment-name'
-    assert '3845' in str(request['input'])
+    assert 'Manual reporting' in str(request['input'])
+    assert '3845' not in str(request['input'])
     assert 'Do not assume Azure' in str(request)
 
 
@@ -210,3 +213,28 @@ def test_host_defaults_to_no_sensitive_content_in_telemetry(monkeypatch):
     host.build_server(settings())
     assert os.environ['OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT'] == 'false'
     assert os.environ['ENABLE_SENSITIVE_DATA'] == 'false'
+
+
+
+def test_context_allowlist_omits_internal_and_duplicate_intake_information():
+    data = context().model_dump(by_alias=True)
+    data['intake']['facts'].update(valueDescription='Value exactly as imported.',
+        desiredBusinessOutcome='Outcome exactly as imported.', vendorName='INTERNAL_VENDOR_NOT_FOR_MODEL')
+    data['intake']['version']['sourceFileName'] = 'INTERNAL_FILE_NOT_FOR_MODEL.md'
+    data['intake']['stakeholders'] = [{'role': 'Sponsor', 'displayName': None, 'email': 'private@example.com', 'sourceValue': 'private@example.com'}]
+    data['intake']['sourceFields'] = [{'ordinal': 1, 'section': 'Intake', 'fieldName': 'Problem Statement',
+        'value': 'DUPLICATED_NARRATIVE_NOT_FOR_MODEL', 'kind': 'Narrative'}]
+    payload = preparation_input(EAProjectContext.model_validate(data), 'Prepare questions.')
+    parsed = json.loads(payload)['project_context']
+    assert set(parsed) == {'project_name', 'business_function', 'problem_statement', 'value_description', 'desired_business_outcome'}
+    assert parsed['value_description'] == 'Value exactly as imported.'
+    assert parsed['desired_business_outcome'] == 'Outcome exactly as imported.'
+    for excluded in ['3845', 'snapshotId', 'private@example.com', 'NOT_FOR_MODEL', 'stakeholders', 'sourceFields', 'aiEffort']:
+        assert excluded not in payload
+
+
+def test_missing_narratives_are_omitted_without_inventing_content():
+    data = context().model_dump(by_alias=True)
+    data['intake']['facts'].update(problemStatement=None, valueDescription='  ', desiredBusinessOutcome=None)
+    result = json.loads(preparation_input(EAProjectContext.model_validate(data), 'Prepare questions.'))
+    assert result['project_context'] == {'project_name': 'Reporting', 'business_function': 'IT'}
