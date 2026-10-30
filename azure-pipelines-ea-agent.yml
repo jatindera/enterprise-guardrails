@@ -75,10 +75,27 @@ stages:
           registry_server=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query loginServer -o tsv)
           [[ "$registry_server" =~ ^[a-z0-9.-]+\.azurecr\.io$ ]] || { echo 'Invalid registry server'; exit 1; }
           az acr login --name "$ACR_NAME"
-          image_tag="$registry_server/$IMAGE_REPOSITORY:build-$BUILD_ID-$JOB_ATTEMPT"
-          docker build --platform linux/amd64 -f deployment/ea-agent/Dockerfile -t "$image_tag" .
-          docker push "$image_tag"
-          digest=$(az acr repository show --name "$ACR_NAME" --image "$IMAGE_REPOSITORY:build-$BUILD_ID-$JOB_ATTEMPT" --query digest -o tsv)
+          # Git records file content, paths and modes, independent of commit/build IDs.
+          # Keep these paths aligned with the Docker build inputs.
+          agent_hash=$(git ls-tree -r HEAD -- app/agents deployment/ea-agent | sha256sum | cut -d ' ' -f 1)
+          source_tag="source-$agent_hash"
+          image_tag="$registry_server/$IMAGE_REPOSITORY:$source_tag"
+          # Listing repositories also handles the very first build. Access failures
+          # must fail the task rather than being treated as a cache miss.
+          repositories=$(az acr repository list --name "$ACR_NAME" -o tsv)
+          tags=""
+          if grep -Fxq "$IMAGE_REPOSITORY" <<< "$repositories"; then
+            tags=$(az acr repository show-tags --name "$ACR_NAME" --repository "$IMAGE_REPOSITORY" -o tsv)
+          fi
+          if grep -Fxq "$source_tag" <<< "$tags"; then
+            echo 'Agent build inputs unchanged; reusing the existing image.'
+          else
+            docker build --platform linux/amd64 -f deployment/ea-agent/Dockerfile -t "$image_tag" .
+            docker push "$image_tag"
+            # Protect the content-based cache tag from accidental overwrite.
+            az acr repository update --name "$ACR_NAME" --image "$IMAGE_REPOSITORY:$source_tag" --write-enabled false --delete-enabled false -o none
+          fi
+          digest=$(az acr repository show --name "$ACR_NAME" --image "$IMAGE_REPOSITORY:$source_tag" --query digest -o tsv)
           uv run --no-sync python -m app.deployment.ea_hosted manifest \
             --image "$registry_server/$IMAGE_REPOSITORY@$digest" \
             --source-commit "$SOURCE_COMMIT" --build-id "$BUILD_ID" \
@@ -88,10 +105,9 @@ stages:
         RESOURCE_GROUP: $(resourceGroup)
         IMAGE_REPOSITORY: $(imageRepository)
         BUILD_ID: $(Build.BuildId)
-        JOB_ATTEMPT: $(System.JobAttempt)
         SOURCE_COMMIT: $(Build.SourceVersion)
         RELEASE_DIR: $(Build.ArtifactStagingDirectory)/ea-agent-release
-      displayName: Build image, push with Entra login, record immutable digest
+      displayName: Reuse unchanged agent image or build and push
     - publish: $(Build.ArtifactStagingDirectory)/ea-agent-release
       artifact: ea-agent-release
 

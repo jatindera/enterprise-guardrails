@@ -1,13 +1,10 @@
-# Fix reserved hosted-agent environment variable
+Replace azure-pipelines-ea-agent.yml at your repository root. Keep all previous backend fixes.
+Commit, push, and start a new pipeline run.
 
-Foundry rejected AGENT_HOST_BIND because the AGENT_* and FOUNDRY_* namespaces are reserved for platform use. The custom bind address is now EG_HOST_BIND in the deployment definition, Dockerfile, and host entry point. No resource, model, role, or identity change is needed.
+Images are cached by Git content of backend/app/agents and backend/deployment/ea-agent. Agent code, instructions, Dockerfile and locked dependencies are covered. Pipeline/backend-only changes reuse the image. Existing deployment configuration fingerprinting still creates a version for runtime configuration changes.
 
-1. Copy the included backend files into the corresponding project paths.
-2. Run `uv run python -m pytest -q` from backend.
-3. Commit and push all included changes.
-4. Start a NEW complete pipeline run against that commit, including Build. The image MUST be rebuilt because its host code and Dockerfile changed. Do not reuse the image from runs 548/549 or retry their deployment stages.
-5. Keep the existing ACR and registry connection parameters.
+First run can create one new version to establish the source-tagged image. Rerun unchanged source: expect "Agent build inputs unchanged" and the same Foundry version, with smoke testing still performed.
 
-If your local environment explicitly sets AGENT_HOST_BIND for this application, rename that setting to EG_HOST_BIND. Existing local .env files normally have no bind setting and need no edit.
+Cached image tags are protected against overwrite/deletion. To refresh the floating Python base image deliberately, change the Dockerfile (prefer pinning a reviewed new base image digest). Updating other build inputs requires maintaining the fingerprint paths.
 
-This corrects the confirmed invalid_payload error. Live deployment and smoke-test success still require verification in your Azure subscription; retain the diagnostics for any further service error.
+Verified shell syntax and Git hash behavior for pipeline-only versus agent code changes. Azure execution must be verified through your next pipeline run.
