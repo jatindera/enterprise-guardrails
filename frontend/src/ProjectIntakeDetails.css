@@ -1,0 +1,14 @@
+.project-intake-details { min-width: 0; }
+.project-intake-details h3 { font-size: 15px; margin: 20px 0 8px; }
+.intake-narrative { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.project-intake-details details { margin-top: 16px; border-top: 1px solid #dce8f4; padding-top: 12px; }
+.project-intake-details summary { cursor: pointer; font-weight: 600; color: #1769aa; }
+.intake-table-scroll { overflow-x: auto; }
+.intake-stakeholders { width: 100%; border-collapse: collapse; text-align: left; }
+.intake-stakeholders th { background: #edf5ff; }
+.intake-stakeholders th, .intake-stakeholders td { padding: 10px 12px; border-bottom: 1px solid #dce8f4; overflow-wrap: anywhere; }
+.intake-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.intake-detail-grid dt { font-weight: 600; }
+.intake-detail-grid dd { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.intake-warning { padding: 12px 16px; border: 1px solid #e7bd55; background: #fff8e6; border-radius: 8px; }
+.intake-source-field { margin-top: 14px; }

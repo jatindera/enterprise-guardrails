@@ -23,6 +23,7 @@ export interface ProjectRecord {
   createdAt: string;
   updatedAt: string;
   intakeSource?: Project["intakeSource"] | null;
+  intakeContext?: Project["intakeContext"] | null;
 }
 
 interface ProjectPage {
@@ -216,6 +217,9 @@ export function projectFromApi(record: ProjectRecord, existing?: Project): Proje
     revision: record.revision,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    ...(record.intakeContext !== undefined
+      ? { intakeContext: record.intakeContext ?? undefined }
+      : {}),
     ...(record.intakeSource !== undefined
       ? { intakeSource: record.intakeSource ?? undefined }
       : {}),

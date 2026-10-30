@@ -1,30 +1,12 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
-from pydantic.alias_generators import to_camel
+from pydantic import Field, StringConstraints, field_validator
+from app.core.api_model import APIModel
+from app.modules.intake.schemas import IntakeContext
 
 
-class APIModel(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=to_camel,
-        populate_by_name=True,
-        from_attributes=True,
-        extra="forbid",
-    )
-
-
-    @field_validator("created_at", "updated_at", "imported_at", "recorded_at", "uploaded_at", "production_saved_at", check_fields=False)
-    @classmethod
-    def utc_timestamp(cls, value: datetime) -> datetime:
-        # All application timestamps are UTC. SQLite test doubles may drop
-        # timezone information; Azure SQL DATETIMEOFFSET preserves it.
-        if value is None:
-            return value
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
 
 
 DemandId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9]{1,64}$")]
@@ -87,14 +69,8 @@ class ProjectSummary(APIModel):
     updated_at: datetime
 
 
-class IntakeSource(APIModel):
-    file_name: str
-    markdown: str
-    imported_at: datetime
-
-
 class ProjectDetail(ProjectSummary):
-    intake_source: IntakeSource | None = None
+    intake_context: IntakeContext | None = None
 
 
 class ProjectPage(APIModel):

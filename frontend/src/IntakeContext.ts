@@ -1,0 +1,62 @@
+export interface IntakeFacts {
+  title?: string | null;
+  businessFunction?: string | null;
+  program?: string | null;
+  programKpis?: string | null;
+  requestingOrganization?: string | null;
+  siteLocation?: string | null;
+  targetProjectStart?: string | null;
+  targetProjectGoLive?: string | null;
+  problemStatement?: string | null;
+  valueDescription?: string | null;
+  desiredBusinessOutcome?: string | null;
+  valueSavingsType?: string | null;
+  intakePriorityDriver?: string | null;
+  businessPriority?: string | null;
+  supportedCompanyGoals?: string | null;
+  aiInitiative?: string | null;
+  levelOfEffort?: string | null;
+  priorityLevel?: string | null;
+  requestType?: string | null;
+  requestSubtype?: string | null;
+  productSolutionName?: string | null;
+  vendorName?: string | null;
+  integratedSystems?: string | null;
+  dataClassification?: string | null;
+  regulatoryData?: string | null;
+  deploymentType?: string | null;
+  impactedUsers?: string | null;
+  primaryDeliveryTeam?: string | null;
+  engagedDeliveryTeams?: string | null;
+  reviewMeetingDate?: string | null;
+  architectureAssessmentStatus?: string | null;
+  architectureAssessmentLink?: string | null;
+  architectureAssessmentCompleteDate?: string | null;
+  securityRiskRating?: string | null;
+  securityAssessmentStatus?: string | null;
+  securityAssessmentLink?: string | null;
+  securityAssessmentCompleteDate?: string | null;
+  aiEffort?: boolean | null;
+  capitalProject?: boolean | null;
+  architectureChange?: boolean | null;
+  consultingServices?: boolean | null;
+  integrationNeeded?: boolean | null;
+  dataClassificationChange?: boolean | null;
+  createProjectTracker?: boolean | null;
+  architectureAssessmentRequired?: boolean | null;
+  arbRequired?: boolean | null;
+  securityAssessmentRequired?: boolean | null;
+  preProductionGateRequired?: boolean | null;
+  budgetAmountUsd?: string | number | null;
+  priorityScore?: string | number | null;
+  expectedUserCount?: number | null;
+}
+export interface IntakeField { ordinal: number; section: string; fieldName: string; value: string; kind: string; }
+export interface IntakeContext {
+  version: { snapshotId: string; sourceSystem: string; sourceItemId: string | null; sourceUrl: string | null; sourceModifiedAt: string | null; sourceEtag: string | null; sourceFileName: string; importedAt: string; structured: boolean; };
+  facts: IntakeFacts;
+  stakeholders: { role: string; displayName: string | null; email: string | null; sourceValue: string; }[];
+  comments: IntakeField[];
+  sourceFields: IntakeField[];
+  parsingWarnings: string[];
+}

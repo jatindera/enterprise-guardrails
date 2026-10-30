@@ -29,14 +29,10 @@ interface MeetingPreparationProps {
   scope: Exclude<PreparationScope, "All">;
 }
 
+import { intakeSuggestionText } from "./projectIntakeContext";
+
 function buildDemoQuestions(project: Project): PreparedQuestion[] {
-  const context = [
-    project.name,
-    project.businessFunction,
-    project.intakeSource?.markdown ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
+  const context = intakeSuggestionText(project);
 
   function question(
     focus: QuestionFocus,

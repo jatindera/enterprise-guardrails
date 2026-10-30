@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.db.models import Project, ProjectIntakeSnapshot
+from app.modules.intake.parser import parse_intake
+from app.modules.intake.service import store_context, context_for_snapshot
 from app.modules.projects.gate_intake import gate_required_from_intake
 from app.modules.projects.arb_intake import arb_required_from_intake
 from app.modules.projects.intake_fields import reviewer_from_intake
@@ -13,7 +15,7 @@ from app.modules.projects.architect_upn import architect_upn_from_intake, Ambigu
 from app.modules.projects.security_upn import security_upn_from_intake, AmbiguousSecurity
 from app.modules.projects.ea_assignment import _resolve
 from app.modules.projects.schemas import (
-    ImportProject, IntakeSource, ProjectDetail, ProjectPage, ProjectSummary, UpdateRAIAssignment,
+    ImportProject, ProjectDetail, ProjectPage, ProjectSummary, UpdateRAIAssignment,
 )
 
 
@@ -25,13 +27,7 @@ def project_detail(session: Session, project: Project) -> ProjectDetail:
         .limit(1)
     )
     result = ProjectSummary.model_validate(project).model_dump()
-    result["intake_source"] = (
-        IntakeSource(
-            file_name=snapshot.source_file_name,
-            markdown=snapshot.markdown,
-            imported_at=snapshot.imported_at,
-        ) if snapshot else None
-    )
+    result["intake_context"] = context_for_snapshot(session, snapshot) if snapshot else None
     return ProjectDetail(**result)
 
 
@@ -68,6 +64,7 @@ def _try_resolve_import(resolver, upn, domain, demand_id):
         return None
 
 def import_project(session: Session, data: ImportProject, resolver=None, default_rai_upn="") -> tuple[ProjectDetail, bool]:
+    parsed_context = parse_intake(data.markdown)
     gate_required = gate_required_from_intake(data.markdown)
     arb_required = arb_required_from_intake(data.markdown)
     ea_from_intake = reviewer_from_intake(data.markdown, "Architect Assigned")
@@ -151,21 +148,14 @@ def import_project(session: Session, data: ImportProject, resolver=None, default
             snapshot = ProjectIntakeSnapshot(
                 project_id=project.id,
                 source_file_name=data.file_name,
-                markdown=data.markdown,
             )
             session.add(snapshot)
             session.flush()
 
-            # Materialize the response while inside the transaction. A commit
-            # failure still raises before a success response is returned.
-            result = ProjectDetail(
-                **ProjectSummary.model_validate(project).model_dump(),
-                intake_source=IntakeSource(
-                    file_name=snapshot.source_file_name,
-                    markdown=snapshot.markdown,
-                    imported_at=snapshot.imported_at,
-                ),
-            )
+            # Save all projections and source fields in the same transaction as
+            # the project and immutable intake version. Any failure rolls back all.
+            store_context(session, snapshot, parsed_context)
+            result = project_detail(session, project)
         return result, created
     except StaleDataError as exc:
         raise HTTPException(409, "Project changed during import. Reload before retrying.") from exc

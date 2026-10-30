@@ -23,6 +23,7 @@ import TranscriptUpload from "./TranscriptUpload";
 
 import type { CaptureMode } from "./MeetingCapture";
 import type { Project } from "./types";
+import ProjectIntakeDetails from "./ProjectIntakeDetails";
 
 import PreparationChat from "./PreparationChat";
 import type { PreparationChatMessage } from "./PreparationChat";
@@ -350,17 +351,7 @@ export default function ReviewSession({
                   {project.eaComplexity}
                 </p>
 
-                <p>
-                  <strong>Original intake:</strong>{" "}
-                  {project.intakeSource
-                    ? "Markdown retained with this project"
-                    : "Sample project fields only"}
-                </p>
-
-                <p className="workspace-secondary">
-                  Full intake and previous meeting evidence will be
-                  available to the agent after backend integration.
-                </p>
+                <ProjectIntakeDetails project={project} />
               </details>
 
               <PreparationChat

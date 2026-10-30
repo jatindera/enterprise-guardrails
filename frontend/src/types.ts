@@ -57,6 +57,7 @@ export type EATechnology =
   | "Others";
 
 export interface Project {
+  intakeContext?: import("./IntakeContext").IntakeContext;
   id?: string;
   revision?: number;
   createdAt?: string;

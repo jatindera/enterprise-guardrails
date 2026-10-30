@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -7,6 +8,8 @@ from sqlalchemy import (
     UniqueConstraint,
     CheckConstraint,
     MetaData,
+    Numeric,
+    BigInteger,
     Unicode,
     UnicodeText,
     Uuid,
@@ -130,13 +133,14 @@ class ProjectIntakeSnapshot(Base):
         index=True,
     )
 
+    source_system: Mapped[str] = mapped_column(Unicode(32), nullable=False, default="markdown", server_default="markdown")
+    source_item_id: Mapped[str | None] = mapped_column(Unicode(512), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    source_modified_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+    source_etag: Mapped[str | None] = mapped_column(Unicode(512), nullable=True)
+
     source_file_name: Mapped[str] = mapped_column(
         Unicode(260),
-        nullable=False,
-    )
-
-    markdown: Mapped[str] = mapped_column(
-        UnicodeText,
         nullable=False,
     )
 
@@ -259,3 +263,86 @@ class ProductionDeploymentEvent(Base):
     actor_name: Mapped[str] = mapped_column(Unicode(320), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
     gate_approval_snapshot: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+
+
+class ProjectIntakeDetail(Base):
+    """Typed intake facts for one immutable import version."""
+    __tablename__ = "project_intake_details"
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("project_intake_snapshots.id"), primary_key=True)
+    parser_version: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    parsing_warnings: Mapped[str] = mapped_column(UnicodeText, nullable=False, default="[]")
+    title: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    business_function: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    program: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    program_kpis: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    requesting_organization: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    site_location: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    target_project_start: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    target_project_go_live: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    problem_statement: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    value_description: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    desired_business_outcome: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    value_savings_type: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    intake_priority_driver: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    business_priority: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    supported_company_goals: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    ai_initiative: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    level_of_effort: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    priority_level: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    request_type: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    request_subtype: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    product_solution_name: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    vendor_name: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    integrated_systems: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    data_classification: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    regulatory_data: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    deployment_type: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    impacted_users: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    primary_delivery_team: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    engaged_delivery_teams: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    review_meeting_date: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    architecture_assessment_status: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    architecture_assessment_link: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    architecture_assessment_complete_date: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    security_risk_rating: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    security_assessment_status: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    security_assessment_link: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    security_assessment_complete_date: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    ai_effort: Mapped[bool | None] = mapped_column(nullable=True)
+    capital_project: Mapped[bool | None] = mapped_column(nullable=True)
+    architecture_change: Mapped[bool | None] = mapped_column(nullable=True)
+    consulting_services: Mapped[bool | None] = mapped_column(nullable=True)
+    integration_needed: Mapped[bool | None] = mapped_column(nullable=True)
+    data_classification_change: Mapped[bool | None] = mapped_column(nullable=True)
+    create_project_tracker: Mapped[bool | None] = mapped_column(nullable=True)
+    architecture_assessment_required: Mapped[bool | None] = mapped_column(nullable=True)
+    arb_required: Mapped[bool | None] = mapped_column(nullable=True)
+    security_assessment_required: Mapped[bool | None] = mapped_column(nullable=True)
+    pre_production_gate_required: Mapped[bool | None] = mapped_column(nullable=True)
+    budget_amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(19, 2), nullable=True)
+    priority_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    expected_user_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+
+class ProjectIntakeField(Base):
+    """Source field/paragraph values, scoped by section; includes unknown fields."""
+    __tablename__ = "project_intake_fields"
+    __table_args__ = (UniqueConstraint("snapshot_id", "ordinal", name="uq_intake_fields_snapshot_ordinal"),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("project_intake_snapshots.id"), nullable=False, index=True)
+    ordinal: Mapped[int] = mapped_column(nullable=False)
+    section: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+    field_name: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+    value: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+    kind: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+
+
+class ProjectIntakeStakeholder(Base):
+    __tablename__ = "project_intake_stakeholders"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("project_intake_snapshots.id"), nullable=False, index=True)
+    ordinal: Mapped[int] = mapped_column(nullable=False)
+    role: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    email: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
+    source_value: Mapped[str] = mapped_column(UnicodeText, nullable=False)

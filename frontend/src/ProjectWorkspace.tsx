@@ -1,4 +1,5 @@
 import ProjectReviewers from "./ProjectReviewers";
+import ProjectIntakeDetails from "./ProjectIntakeDetails";
 import { gateIsCurrent } from "./projectWorkflow";
 import { useEffect, useState } from "react";
 import { getEAAccess, getSecurityAccess, getRAIAccess } from "./api/projects";
@@ -206,35 +207,14 @@ function ProjectWorkspaceContent({
         <section
           id="workspace-original-intake"
           className="content-panel workspace-intake"
-          aria-label="Original intake"
+          aria-label="IT intake details"
         >
           <div className="panel-heading">
-            <h2>Original IT Intake</h2>
+            <h2>IT intake details</h2>
           </div>
 
           <div className="workspace-panel-body">
-            {project.intakeSource ? (
-              <>
-                <p className="workspace-secondary">
-                  Source: {project.intakeSource.fileName}
-                  {" · "}
-                  Imported:{" "}
-                  {new Date(
-                    project.intakeSource.importedAt,
-                  ).toLocaleString()}
-                </p>
-
-                <pre className="intake-source-text">
-                  {project.intakeSource.markdown}
-                </pre>
-              </>
-            ) : (
-              <p className="workspace-secondary">
-                No original intake file is attached to this
-                project. Import a Markdown export to retain it
-                here.
-              </p>
-            )}
+            <ProjectIntakeDetails project={project} />
           </div>
         </section>
       )}
@@ -355,6 +335,7 @@ function ProjectWorkspaceContent({
                 </div>
               </dl>
               <ProjectReviewers project={project} onSave={onSaveRAIAssignment} />
+              <ProjectIntakeDetails project={project} />
             </div>
           </section>
 

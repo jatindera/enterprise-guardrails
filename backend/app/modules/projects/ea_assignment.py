@@ -2,8 +2,8 @@
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm.exc import StaleDataError
-from app.db.models import Project, ProjectIntakeSnapshot
-from app.modules.projects.architect_upn import architect_upn_from_intake, AmbiguousArchitect
+from app.db.models import Project
+from app.modules.intake.reviewer_identity import primary_reviewer_upn
 from app.modules.projects.ea_access import ea_permissions
 from app.modules.projects.graph_identity import IdentityNotFound, IdentityLookupUnavailable
 
@@ -50,18 +50,9 @@ def resolve_primary(session, demand_id, expected_revision, user, resolver):
     with session.begin():
         project = _project(session, demand_id)
         _revision(project, expected_revision)
-        snapshot = session.scalar(select(ProjectIntakeSnapshot)
-            .where(ProjectIntakeSnapshot.project_id == project.id)
-            .order_by(ProjectIntakeSnapshot.imported_at.desc(), ProjectIntakeSnapshot.id.desc()).limit(1))
-        try:
-            result = architect_upn_from_intake(snapshot.markdown if snapshot else "")
-            if not result.present:
-                result = architect_upn_from_intake(f"Architect Assigned: {project.assigned_ea}")
-        except AmbiguousArchitect:
-            raise HTTPException(422, "The intake contains multiple architect emails.") from None
-        if not result.upn:
+        upn = primary_reviewer_upn(session, project, "ea")
+        if not upn:
             raise HTTPException(422, "No architect sign-in email was found in the intake.")
-        upn = result.upn
     oid = _resolve(resolver, upn)
     try:
         with session.begin():

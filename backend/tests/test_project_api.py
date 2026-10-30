@@ -74,7 +74,8 @@ def test_create_list_and_retrieve_latest_intake(client):
     project = response.json()
     assert project["revision"] == 1
     assert project["assignedEa"] == "Jatinder Arora"
-    assert project["intakeSource"]["fileName"] == "intake.md"
+    assert project["intakeContext"]["version"]["sourceFileName"] == "intake.md"
+    assert "intakeSource" not in project
     assert client.get("/api/projects/3601").json() == project
     page = client.get("/api/projects?limit=1&offset=0").json()
     assert page["total"] == 1
@@ -94,7 +95,7 @@ def test_reimport_advances_revision_and_retains_snapshots(client, database):
     assert updated["revision"] == 2
     assert updated["businessFunction"] == "Water"
     assert updated["assignedEa"] == "Jatinder Arora"
-    assert client.get("/api/projects/3601").json()["intakeSource"]["markdown"] == "# Revised intake"
+    assert client.get("/api/projects/3601").json()["intakeContext"]["version"]["sourceFileName"] == "intake.md"
     with Session(database) as session:
         assert session.scalar(select(func.count()).select_from(Project)) == 1
         assert session.scalar(select(func.count()).select_from(ProjectIntakeSnapshot)) == 2

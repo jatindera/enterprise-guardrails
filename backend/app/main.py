@@ -1,4 +1,5 @@
 # keep following at top of file to avoid circular imports
+from app.modules.intake.router import router as intake_context_router
 from app.modules.production.router import router as production_router
 from app.modules.artifacts.router import router as artifacts_router
 from app.modules.gate.router import router as gate_router
@@ -74,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(gate_router)
     application.include_router(artifacts_router)
     application.include_router(production_router)
+    application.include_router(intake_context_router)
     application.include_router(ea_assignment_router)
     application.include_router(security_assignment_router)
     application.include_router(rai_assignment_router)
