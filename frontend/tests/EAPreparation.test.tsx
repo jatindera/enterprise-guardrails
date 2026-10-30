@@ -56,3 +56,54 @@ it("shows service errors without a sample reply and preserves the draft", async 
   expect(await screen.findByRole("alert")).toBeTruthy();
   expect(change).not.toHaveBeenCalled(); expect(draft).not.toHaveBeenCalled();
 });
+
+it("shows the welcome message and an accessible waiting indicator until the reply arrives", async () => {
+  let resolve!: (value: unknown) => void;
+  mocks.chat.mockReturnValue(new Promise(r => { resolve = r; }));
+  const change = vi.fn();
+  render(<PreparationChat project={project} connected scope="EA" messages={[]} draft="Explain the project" questions={[]}
+    onMessagesChange={change} onDraftChange={vi.fn()} onAddQuestion={vi.fn()} />);
+  expect(screen.getByText("Let’s prepare for the review")).toBeTruthy();
+  expect(screen.getByText(/Explore the project, clarify requirements/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Send"}));
+  expect(screen.getByRole("status").textContent).toContain("Preparing a response");
+  expect(screen.getByRole("status").querySelector(".eg-chat-wait-spinner")?.getAttribute("aria-hidden")).toBe("true");
+  expect((screen.getByRole("button", {name: "Send"}) as HTMLButtonElement).disabled).toBe(true);
+  resolve({text: "A useful explanation.", proposedQuestion: null});
+  await waitFor(() => expect(change).toHaveBeenCalled());
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
+it("regenerates only unselected AI drafts, preserving manual, selected and other-domain questions", async () => {
+  const saved = { id: "saved", focus: "EA" as const, priority: "Essential" as const, question: "Keep selected?", reason: "Selected", selected: true, source: "ai" as const };
+  const manual = { ...saved, id: "manual", question: "My own question?", source: "manual" as const, selected: false };
+  const old = { ...saved, id: "old", question: "Old AI question?", selected: false };
+  const other = { ...old, id: "security", focus: "Security" as const };
+  const questions = [manual, saved, old, other];
+  mocks.generate.mockResolvedValue({questions: [question, { ...question, question: saved.question }]});
+  const change = vi.fn();
+  const view = render(<MeetingPreparation project={project} questions={questions} onQuestionsChange={change} scope="EA" />);
+  fireEvent.click(screen.getByRole("button", {name: "Regenerate AI questions"}));
+  await waitFor(() => expect(change).toHaveBeenCalledTimes(1));
+  const first = change.mock.calls[0][0];
+  expect(first.slice(0, 3)).toEqual([manual, saved, other]);
+  expect(first).toHaveLength(4);
+  expect(first.find((q: {id: string}) => q.id === "old")).toBeUndefined();
+  expect(first[3].selected).toBe(false);
+  view.rerender(<MeetingPreparation project={project} questions={first} onQuestionsChange={change} scope="EA" />);
+  fireEvent.click(screen.getByRole("button", {name: "Regenerate AI questions"}));
+  await waitFor(() => expect(change).toHaveBeenCalledTimes(2));
+  expect(change.mock.calls[1][0]).toHaveLength(4);
+});
+
+it("keeps the entire question list unchanged if regeneration fails", async () => {
+  mocks.generate.mockRejectedValue(new Error("Foundry unavailable"));
+  const questions = [{id: "old", focus: "EA" as const, priority: "Essential" as const,
+    question: "Retain this draft?", reason: "Original", source: "ai" as const, selected: false}];
+  const change = vi.fn();
+  render(<MeetingPreparation project={project} questions={questions} onQuestionsChange={change} scope="EA" />);
+  fireEvent.click(screen.getByRole("button", {name: "Regenerate AI questions"}));
+  expect((await screen.findByRole("alert")).textContent).toContain("Foundry unavailable");
+  expect(change).not.toHaveBeenCalled();
+  expect(screen.getByDisplayValue("Retain this draft?")).toBeTruthy();
+});

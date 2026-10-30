@@ -32,6 +32,7 @@ interface PreparationChatProps {
   onAddQuestion: (question: PreparedQuestion) => void;
   inputLabel?: string;
   emptyMessage?: string;
+  welcomeTitle?: string;
   footerText?: string;
   disabled?: boolean;
   scope?: PreparationScope;
@@ -146,8 +147,9 @@ export default function PreparationChat({
   scope = "All",
   allowedFocuses = ["Joint", "EA", "Security", "RAI"],
   inputLabel = "Ask the preparation assistant",
+  welcomeTitle = "Let’s prepare for the review",
   emptyMessage =
-  "Ask for clarification before adding a question. For example: “The vendor says they use SSO. What else should I ask?”",
+  "Explore the project, clarify requirements, compare solution options, or ask for questions to bring to the meeting.",
   footerText =
   "Chat is held locally while the workspace remains open. Only questions you explicitly add enter the meeting question list.",
 }: PreparationChatProps) {
@@ -216,7 +218,7 @@ export default function PreparationChat({
         {messages.length === 0 && (
           <div className="eg-chat-empty">
             <span className="eg-chat-avatar" aria-hidden="true">💬</span>
-            <div><strong>How can I help?</strong><p>{emptyMessage}</p></div>
+            <div><strong>{welcomeTitle}</strong><p>{emptyMessage}</p></div>
           </div>
         )}
         {messages.map((message) => {
@@ -246,7 +248,13 @@ export default function PreparationChat({
           );
         })}
       </div>
-      {busy && <p role="status">EA assistant is thinking…</p>}
+      {busy && (
+        <div className="eg-chat-wait" role="status" aria-live="polite" aria-atomic="true">
+          <span className="eg-chat-wait-spinner" aria-hidden="true" />
+          <span>Preparing a response</span>
+          <span className="eg-chat-wait-dots" aria-hidden="true"><span>·</span><span>·</span><span>·</span></span>
+        </div>
+      )}
       {error && <p role="alert">{error}</p>}
       {connected && messages.length > 0 && <Button disabled={busy} onClick={() => { onMessagesChange([]); setError(""); }}>Clear chat</Button>}
       <div className="eg-chat-composer">

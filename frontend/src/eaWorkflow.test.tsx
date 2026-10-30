@@ -7,6 +7,9 @@ import ReviewSession from "./ReviewSession";
 import type { Project } from "./types";
 
 vi.mock("./api/projects", () => ({
+  getMeetingPreparation: vi.fn(async () => ({preparedQuestions: [], additionalQuestions: [], currentQuestionId: null,
+    askedQuestionIds: [], revision: 0, canEdit: true, askedAt: {}})),
+  saveMeetingPreparation: vi.fn(async (_id, _domain, data, revision) => ({...data, revision: revision + 1, canEdit: true, askedAt: {}})),
   getEAAccess: vi.fn(async () => ({canEdit: true, canClose: true, canManageAdditional: true, revision: 1, primaryResolved: true})),
   getSecurityAccess: vi.fn(async () => ({canEdit: true, revision: 1})),
   getRAIAccess: vi.fn(async () => ({canEdit: true, revision: 1})),
@@ -88,7 +91,7 @@ describe("combined EA assessment", () => {
    fireEvent.change(screen.getByLabelText("Question"),{target:{value:"What data moves?"}});
    fireEvent.click(screen.getByRole("button",{name:"Select for meeting"}));
    fireEvent.click(screen.getByRole("button",{name:"Start meeting"}));
-   fireEvent.click(screen.getByRole("button",{name:"Use question"}));
+   fireEvent.click(await screen.findByRole("button",{name:"Use question"}));
    fireEvent.click(screen.getByRole("button",{name:"Review meeting"}));
    fireEvent.click(screen.getByRole("button",{name:"Attach test transcript"}));
    fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));

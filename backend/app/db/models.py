@@ -346,3 +346,31 @@ class ProjectIntakeStakeholder(Base):
     display_name: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
     email: Mapped[str | None] = mapped_column(Unicode(320), nullable=True)
     source_value: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+
+
+class MeetingPreparationRecord(Base):
+    __tablename__ = 'meeting_preparations'
+    __table_args__ = (UniqueConstraint('project_id', 'domain'),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey('projects.id'), nullable=False)
+    domain: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    revision: Mapped[int] = mapped_column(default=1, nullable=False)
+    current_question_id: Mapped[str | None] = mapped_column(Unicode(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)
+    updated_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    __mapper_args__ = {'version_id_col': revision}
+
+
+class MeetingPreparedQuestion(Base):
+    __tablename__ = 'meeting_prepared_questions'
+    preparation_id: Mapped[UUID] = mapped_column(ForeignKey('meeting_preparations.id'), primary_key=True)
+    id: Mapped[str] = mapped_column(Unicode(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    position: Mapped[int] = mapped_column(nullable=False)
+    question: Mapped[str] = mapped_column(Unicode(4000), nullable=False)
+    reason: Mapped[str] = mapped_column(Unicode(2000), nullable=False)
+    priority: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    source: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    selected: Mapped[bool] = mapped_column(nullable=False)
+    asked_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+    asked_order: Mapped[int | None] = mapped_column(nullable=True)

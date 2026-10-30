@@ -30,6 +30,7 @@ interface MeetingPreparationProps {
   onQuestionsChange: (questions: PreparedQuestion[]) => void;
   scope: Exclude<PreparationScope, "All">;
   canEditOverride?: boolean;
+  lockedQuestionIds?: string[];
 }
 
 import { intakeSuggestionText } from "./projectIntakeContext";
@@ -142,6 +143,7 @@ export default function MeetingPreparation({
   onQuestionsChange,
   scope,
   canEditOverride = true,
+  lockedQuestionIds = [],
 }: MeetingPreparationProps) {
   const access = preparationAccess(useAuth().roles);
   const filter = scope;
@@ -152,11 +154,13 @@ export default function MeetingPreparation({
   latestQuestions.current = questions;
   useEffect(() => { setBusy(false); setError(""); return () => active.current?.abort(); }, [project.demandId, scope]);
   const canPrepare = canEditPreparationFocus(access, scope) && canEditOverride && !busy;
-  const canEdit = (question: PreparedQuestion) => canPrepare && question.focus === scope;
+  const canEdit = (question: PreparedQuestion) => canPrepare && question.focus === scope && !lockedQuestionIds.includes(question.id);
 
   const visibleQuestions = questions
     .filter((question) => question.focus === filter)
     .sort((a, b) => Number(isManualQuestion(b)) - Number(isManualQuestion(a)));
+
+  const hasAIQuestions = questions.some(q => q.focus === scope && !isManualQuestion(q));
 
   const selectedCount = questions.filter(
     (question) =>
@@ -217,8 +221,11 @@ export default function MeetingPreparation({
       try {
         const reply = await generateEAQuestions(project.demandId, controller.signal);
         if (controller.signal.aborted) return;
-        const current = latestQuestions.current;
-        const existing = new Set(current.map(q => q.question.trim().toLowerCase()));
+        // Replace only unselected EA AI drafts after a successful response.
+        // Manual questions, selected questions and other domains survive unchanged.
+        const current = latestQuestions.current.filter(q =>
+          q.focus !== "EA" || isManualQuestion(q) || q.selected === true || lockedQuestionIds.includes(q.id));
+        const existing = new Set(current.filter(q => q.focus === "EA").map(q => q.question.trim().toLowerCase()));
         const added: PreparedQuestion[] = [];
         for (const q of reply.questions) {
           const key = q.question.trim().toLowerCase();
@@ -278,7 +285,7 @@ export default function MeetingPreparation({
           disabled={!canPrepare}
           onClick={prepareQuestions}
         >
-          {busy ? "Preparing questions…" : "Prepare questions with AI"}
+          {busy ? "Preparing questions…" : scope === "EA" && hasAIQuestions ? "Regenerate AI questions" : "Prepare questions with AI"}
         </Button>
 
         <Button disabled={!canPrepare} onClick={addQuestion}>
@@ -290,6 +297,9 @@ export default function MeetingPreparation({
         </Badge>
       </div>
 
+      {scope === "EA" && hasAIQuestions && (
+        <p className="workspace-secondary">Regenerating replaces unselected AI questions. Your questions and selected questions are kept.</p>
+      )}
       {error && <p role="alert">{error}</p>}
       {questions.length === 0 ? (
         <p className="workspace-secondary">

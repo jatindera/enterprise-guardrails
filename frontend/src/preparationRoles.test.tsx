@@ -18,6 +18,9 @@ vi.mock("./MeetingReview", () => ({ default: () => null }));
 vi.mock("./TranscriptUpload", () => ({ default: () => null }));
 
 vi.mock("./api/projects", () => ({
+  getMeetingPreparation: vi.fn(async () => ({preparedQuestions: [], additionalQuestions: [], currentQuestionId: null,
+    askedQuestionIds: [], revision: 0, canEdit: true, askedAt: {}})),
+  saveMeetingPreparation: vi.fn(async (_id, _domain, data, revision) => ({...data, revision: revision + 1, canEdit: true, askedAt: {}})),
   generateEAQuestions: vi.fn(async () => ({questions: [{question: "Which systems are involved?", reason: "Confirm scope.", priority: "Essential"}]})),
 }));
 const identity = vi.hoisted(() => ({ roles: ["Admin"] as string[] }));

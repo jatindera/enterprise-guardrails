@@ -1,3 +1,4 @@
+import { useMeetingPersistence } from "./meetings/useMeetingPersistence";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "./auth/AuthGate";
@@ -80,7 +81,7 @@ export default function ReviewSession({
 }: ReviewSessionProps) {
   const access = preparationAccess(useAuth().roles);
   const preparationScope = preparationDomain;
-  const canPrepare = canEditPreparationFocus(access, preparationDomain) && (canEditOverride ?? true);
+  const roleCanPrepare = canEditPreparationFocus(access, preparationDomain) && (canEditOverride ?? true);
   const [phase, setPhase] = useState<MeetingPhase>("Prepare");
 
   const meetingTitle = `${project.name} — stakeholder review`;
@@ -128,12 +129,42 @@ export default function ReviewSession({
     useState<PreparedQuestion[]>([]);
 
   const [manualQuestionDraft, setManualQuestionDraft] = useState("");
+  const [starting, setStarting] = useState(false);
+  const persistence = useMeetingPersistence(project.demandId, preparationDomain, {
+    preparedQuestions, additionalQuestions, currentQuestionId: activePreparedQuestionId,
+    askedQuestionIds: askedPreparedQuestionIds,
+  }, (value) => {
+    setPreparedQuestions(value.preparedQuestions);
+    setAdditionalQuestions(value.additionalQuestions);
+    setActivePreparedQuestionId(value.currentQuestionId);
+    setAskedPreparedQuestionIds(value.askedQuestionIds);
+    const questions = [...value.preparedQuestions, ...value.additionalQuestions];
+    setCurrentQuestion(questions.find(q => q.id === value.currentQuestionId)?.question ?? "");
+    setEntries(value.askedQuestionIds.map((id, index) => {
+      const question = questions.find(q => q.id === id)!;
+      return {id: index + 1, question: question.question, answer: "", speaker: "Not recorded",
+        focus: question.focus, capturedAt: value.askedAt[id], captureMode: "manual"};
+    }));
+  });
+  const canPrepare = roleCanPrepare && persistence.ready && persistence.canEdit && !starting;
+
+  async function changePhase(next: MeetingPhase) {
+    if (next !== "Conduct meeting") { setPhase(next); return; }
+    if (!persistence.ready || starting) return;
+    setStarting(true);
+    try {
+      await persistence.flush();
+      setPhase(next);
+    } catch { /* Save/load error is displayed beside the persistence status. */ }
+    finally { setStarting(false); }
+  }
+
 
   function usePreparedQuestion(question: PreparedQuestion) {
     const questionText = question.question.trim();
 
     if (
-      !questionText ||
+      !canPrepare || !questionText ||
       askedPreparedQuestionIds.includes(question.id)
     ) {
       return;
@@ -185,6 +216,7 @@ export default function ReviewSession({
   }
 
   function addManualMeetingQuestion() {
+    if (!canPrepare) return;
     const text = manualQuestionDraft.trim();
 
     if (!text) {
@@ -207,6 +239,7 @@ export default function ReviewSession({
   }
 
   function addMeetingQuestionFromChat(question: PreparedQuestion) {
+    if (!canPrepare) return;
     setAdditionalQuestions((current) => {
       const alreadyExists = current.some(
         (item) =>
@@ -266,7 +299,8 @@ export default function ReviewSession({
               phase === item ? "primary" : "secondary"
             }
             aria-pressed={phase === item}
-            onClick={() => setPhase(item)}
+            disabled={starting || (item === "Conduct meeting" && !persistence.ready)}
+            onClick={() => { void changePhase(item); }}
           >
             {item}
           </Button>
@@ -282,8 +316,15 @@ export default function ReviewSession({
         )}
       </div>
 
+      <div className="meeting-review-actions" aria-live="polite">
+        <span>{persistence.ready ? `Meeting questions · ${persistence.status}` : persistence.error ? "Questions unavailable" : "Loading saved questions…"}</span>
+        {persistence.error && <span role="alert">{persistence.error}</span>}
+        {persistence.ready && persistence.error && persistence.status !== "Conflict" &&
+          <Button onClick={() => { void persistence.flush().catch(() => {}); }}>Retry save</Button>}
+        {persistence.error && <Button onClick={persistence.reload}>Reload saved questions (discard local changes)</Button>}
+      </div>
       <fieldset disabled={!canPrepare} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-      {phase === "Prepare" && !canPrepare && (
+      {phase === "Prepare" && (!roleCanPrepare || (persistence.ready && !persistence.canEdit)) && (
         <MessageBar intent="info"><MessageBarBody>
           {preparationDomain} preparation is read-only for your role.
         </MessageBarBody></MessageBar>
@@ -303,6 +344,7 @@ export default function ReviewSession({
                 onQuestionsChange={setPreparedQuestions}
                 scope={preparationScope}
                 canEditOverride={canPrepare}
+                lockedQuestionIds={askedPreparedQuestionIds}
               />
 
               <p className="workspace-secondary">
@@ -313,7 +355,7 @@ export default function ReviewSession({
               <Button
                 appearance="primary"
                 disabled={!canPrepare}
-                onClick={() => { if (canPrepare) setPhase("Conduct meeting"); }}
+                onClick={() => { if (canPrepare) void changePhase("Conduct meeting"); }}
               >
                 Start meeting
               </Button>
@@ -393,8 +435,7 @@ export default function ReviewSession({
 
 
                 <p className="muted-text">
-                  Choose a question, ask it, and capture the answer. Captured questions
-                  are marked as asked.
+                  Choose a question to ask. Asked questions are saved in discussion history; upload the transcript in Review meeting to capture answers.
                 </p>
 
                 {preparedQuestions.filter(
@@ -495,12 +536,12 @@ export default function ReviewSession({
 
               <details className="session-history">
                 <summary>
-                  Discussion history ({entries.length} answers)
+                  Discussion history ({entries.length} questions)
                 </summary>
 
                 {entries.length === 0 ? (
                   <p className="workspace-secondary">
-                    No answers captured yet.
+                    No questions asked yet.
                   </p>
                 ) : (
                   entries.map((entry) => (
@@ -540,12 +581,14 @@ export default function ReviewSession({
               <PreparationChat
                 project={project}
                 scope={preparationDomain}
+                disabled={!canPrepare}
                 messages={meetingChatMessages}
                 draft={meetingChatDraft}
                 questions={[...preparedQuestions, ...additionalQuestions]}
                 onMessagesChange={setMeetingChatMessages}
                 onDraftChange={setMeetingChatDraft}
                 onAddQuestion={addMeetingQuestionFromChat}
+                welcomeTitle="Your review assistant"
                 inputLabel="Ask the meeting assistant"
                 emptyMessage="Ask for help with a stakeholder answer or request a follow-up question."
                 footerText="Demo replies use the message you send. Automatic analysis of captured answers and conversation history awaits Foundry integration. Added questions appear under Additional questions."

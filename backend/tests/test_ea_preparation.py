@@ -93,3 +93,16 @@ def test_hosted_version_credentials_and_cleanup(monkeypatch, auth_mode, failed):
     project.agents.stop_session.assert_called_once_with(agent_name='enterprise-architecture-agent', session_id='private-session')
     if auth_mode == 'managed_identity': mi.assert_called_once_with(client_id='identity-client-id'); cli.assert_not_called()
     else: cli.assert_called_once(); mi.assert_not_called()
+
+
+def test_explanatory_chat_can_reply_without_a_meeting_question(client, database):
+    setup_project(client, database)
+    invoke = Mock(return_value=json.dumps({'text': 'These are potential risk areas, not verified SDK vulnerabilities.', 'proposedQuestion': None}))
+    client.app.dependency_overrides[hosted_invoker] = lambda: invoke
+    response = client.post('/api/projects/3601/ea-preparation/chat', json={'message': 'Explain vulnerabilities of this SDK.'})
+    assert response.status_code == 200
+    assert response.json()['proposedQuestion'] is None
+    task = json.loads(invoke.call_args.args[0])['task']
+    assert 'default proposedQuestion to null' in task
+    assert 'focused on one issue' in task
+    assert 'verified published vulnerabilities' in task

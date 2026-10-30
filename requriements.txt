@@ -1,0 +1,12 @@
+1. Learn from historical data/questions/human EA
+2. EA agent preparing questions but where is the project context? is it preparing questions without context?
+3. Ask AI if instructions need to be improved.
+4. Add web agent for the chat
+5. agent.py understand the purpose and if we need to implement anything. 
+# The hosted outer protocol owns its history; direct local runs are one-shot.
+        default_options={'store': False, 'max_tokens': settings.max_output_tokens},
+    
+6. ea_preparation/router.py questions() chat() do we need to improve task    
+7. are we using pydantic to validate json return.
+8. how runtime tasks are changing the core instructions?
+9. questions in db not against the demand id.

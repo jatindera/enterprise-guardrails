@@ -65,11 +65,11 @@ async function request<T>(
     const body = await response.json();
     if (!response.ok) {
       const message = body?.error?.message ?? body?.detail;
-      throw new Error(
+      throw Object.assign(new Error(
         typeof message === "string"
           ? message
           : `API request failed (${response.status}).`,
-      );
+      ), { status: response.status });
     }
     return body as T;
   } catch (error) {
@@ -416,4 +416,32 @@ export function chatWithEA(demandId: string, message: string,
     `/api/projects/${encodeURIComponent(demandId)}/ea-preparation/chat`,
     { method: "POST", body: JSON.stringify({ message, history }), signal }, "json", 240000,
   );
+}
+
+
+export interface MeetingDraft {
+  preparedQuestions: import("../MeetingPreparation").PreparedQuestion[];
+  additionalQuestions: import("../MeetingPreparation").PreparedQuestion[];
+  currentQuestionId: string | null;
+  askedQuestionIds: string[];
+}
+export interface MeetingState extends MeetingDraft {
+  revision: number;
+  canEdit: boolean;
+  askedAt: Record<string, string>;
+}
+export function getMeetingPreparation(demandId: string, domain: string, signal?: AbortSignal) {
+  return request<MeetingState>(`/api/projects/${encodeURIComponent(demandId)}/meeting-preparation/${domain}`, { signal });
+}
+export function saveMeetingPreparation(demandId: string, domain: string, draft: MeetingDraft, expectedRevision: number) {
+  // Normalize legacy optional UI fields before the strictly validated API request.
+  const normalize = (q: MeetingDraft["preparedQuestions"][number]) => ({
+    id: q.id, focus: q.focus, question: q.question, reason: q.reason, priority: q.priority,
+    source: q.source ?? (q.reason === "Added by reviewer." || q.reason.startsWith("Added manually") ? "manual" : "ai"),
+    selected: q.selected === true,
+  });
+  return request<MeetingState>(`/api/projects/${encodeURIComponent(demandId)}/meeting-preparation/${domain}`, {
+    method: "PUT", body: JSON.stringify({...draft, preparedQuestions: draft.preparedQuestions.map(normalize),
+      additionalQuestions: draft.additionalQuestions.map(normalize), expectedRevision}),
+  });
 }

@@ -15,3 +15,16 @@
 .eg-chat-label { color: #244968; font-weight: 600; }
 .eg-chat-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #526a80; font-size: 12px; }
 .eg-chat-footer { margin: 0; color: #526a80; font-size: 12px; line-height: 1.5; }
+
+
+.eg-chat-wait { display: flex; align-items: center; gap: 9px; color: #1265a5; padding: 10px 12px; border: 1px solid #d8e5f3; border-radius: 10px; background: #f4f8fd; font-size: 13px; }
+.eg-chat-wait-spinner { flex: 0 0 16px; width: 16px; height: 16px; box-sizing: border-box; border: 2px solid #c4ddf6; border-top-color: #1265a5; border-radius: 50%; animation: eg-chat-spin 0.9s linear infinite; }
+.eg-chat-wait-dots { display: inline-flex; gap: 3px; font-size: 20px; line-height: 1; }
+.eg-chat-wait-dots span { animation: eg-chat-dot 1.2s ease-in-out infinite; }
+.eg-chat-wait-dots span:nth-child(2) { animation-delay: 0.15s; }
+.eg-chat-wait-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes eg-chat-spin { to { transform: rotate(360deg); } }
+@keyframes eg-chat-dot { 0%, 60%, 100% { opacity: 0.35; } 30% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .eg-chat-wait-spinner, .eg-chat-wait-dots span { animation: none; }
+}

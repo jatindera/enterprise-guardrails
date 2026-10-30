@@ -5,6 +5,9 @@ import ReviewSession from "./ReviewSession";
 import type { Project } from "./types";
 
 vi.mock("./api/projects", () => ({
+  getMeetingPreparation: vi.fn(async () => ({preparedQuestions: [], additionalQuestions: [], currentQuestionId: null,
+    askedQuestionIds: [], revision: 0, canEdit: true, askedAt: {}})),
+  saveMeetingPreparation: vi.fn(async (_id, _domain, data, revision) => ({...data, revision: revision + 1, canEdit: true, askedAt: {}})),
   generateEAQuestions: vi.fn(async () => ({ questions: [{question: "Which systems are involved?", reason: "Confirm scope.", priority: "Essential"}] })),
   chatWithEA: vi.fn(async () => ({text: "Clarify boundaries.", proposedQuestion: {question: "Which integrations are needed?", reason: "Confirm scope.", priority: "Follow-up"}})),
 }));
@@ -24,6 +27,7 @@ describe("preparation context", () => {
    identity.roles=[role]; show();
    expect(screen.getByLabelText("Preparation domain: EA")).toBeTruthy();
    expect(screen.queryByRole("combobox")).toBeNull();
+   await waitFor(() => expect((screen.getByRole("button",{name:"Prepare questions with AI"}) as HTMLButtonElement).disabled).toBe(false));
    fireEvent.click(screen.getByRole("button",{name:"Prepare questions with AI"}));
    await waitFor(() => expect(document.querySelectorAll(".prepared-question").length).toBeGreaterThan(0));
    const cards=Array.from(document.querySelectorAll(".prepared-question"));
@@ -40,14 +44,16 @@ describe("preparation context", () => {
    for(const name of ["Prepare questions with AI","Add my question","Start meeting","Send"]) expect((screen.getByRole("button",{name}) as HTMLButtonElement).disabled).toBe(true);
    expect(screen.getByText("EA preparation is read-only for your role.")).toBeTruthy();
  });
- it("uses the supplied Security context for later reuse", () => {
+ it("uses the supplied Security context for later reuse", async () => {
    identity.roles=["security-engineer"]; show("Security");
    expect(screen.getByLabelText("Preparation domain: Security")).toBeTruthy();
+   await waitFor(() => expect((screen.getByRole("button",{name:"Add my question"}) as HTMLButtonElement).disabled).toBe(false));
    fireEvent.click(screen.getByRole("button",{name:"Add my question"}));
    expect(document.querySelector(".prepared-question")?.textContent).toContain("Security");
  });
  it("keeps preparation chat in EA context for Admin", async () => {
-   show(); fireEvent.change(screen.getByRole("textbox"),{target:{value:"What about SSO?"}});
+   show(); await waitFor(() => expect((screen.getByRole("button",{name:"Add my question"}) as HTMLButtonElement).disabled).toBe(false));
+   fireEvent.change(screen.getByRole("textbox"),{target:{value:"What about SSO?"}});
    fireEvent.click(screen.getByRole("button",{name:"Send"}));
    await waitFor(() => expect(document.querySelector(".eg-chat-proposal")?.textContent).toContain("EA"));
    expect(document.querySelector(".eg-chat-proposal")?.textContent).not.toContain("Security");
