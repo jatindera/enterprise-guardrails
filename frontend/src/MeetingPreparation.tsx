@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { generateEAQuestions } from "./api/projects";
 import { useAuth } from "./auth/AuthGate";
 import { preparationAccess, canEditPreparationFocus } from "./auth/preparationAccess";
 import type { PreparationScope } from "./auth/preparationAccess";
@@ -27,6 +29,7 @@ interface MeetingPreparationProps {
   questions: PreparedQuestion[];
   onQuestionsChange: (questions: PreparedQuestion[]) => void;
   scope: Exclude<PreparationScope, "All">;
+  canEditOverride?: boolean;
 }
 
 import { intakeSuggestionText } from "./projectIntakeContext";
@@ -138,10 +141,17 @@ export default function MeetingPreparation({
   questions,
   onQuestionsChange,
   scope,
+  canEditOverride = true,
 }: MeetingPreparationProps) {
   const access = preparationAccess(useAuth().roles);
   const filter = scope;
-  const canPrepare = canEditPreparationFocus(access, scope);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const active = useRef<AbortController | null>(null);
+  const latestQuestions = useRef(questions);
+  latestQuestions.current = questions;
+  useEffect(() => { setBusy(false); setError(""); return () => active.current?.abort(); }, [project.demandId, scope]);
+  const canPrepare = canEditPreparationFocus(access, scope) && canEditOverride && !busy;
   const canEdit = (question: PreparedQuestion) => canPrepare && question.focus === scope;
 
   const visibleQuestions = questions
@@ -198,8 +208,32 @@ export default function MeetingPreparation({
     );
   }
 
-  function prepareQuestions() {
-    if (!canPrepare) return;
+  async function prepareQuestions() {
+    if (!canPrepare || active.current && !active.current.signal.aborted && busy) return;
+    if (scope === "EA") {
+      const controller = new AbortController();
+      active.current = controller;
+      setBusy(true); setError("");
+      try {
+        const reply = await generateEAQuestions(project.demandId, controller.signal);
+        if (controller.signal.aborted) return;
+        const current = latestQuestions.current;
+        const existing = new Set(current.map(q => q.question.trim().toLowerCase()));
+        const added: PreparedQuestion[] = [];
+        for (const q of reply.questions) {
+          const key = q.question.trim().toLowerCase();
+          if (existing.has(key)) continue;
+          existing.add(key);
+          added.push({ ...q, id: crypto.randomUUID(), focus: "EA", selected: false, source: "ai" });
+        }
+        onQuestionsChange([...current, ...added]);
+      } catch (err) {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not prepare questions.");
+      } finally {
+        if (!controller.signal.aborted) setBusy(false);
+      }
+      return;
+    }
     const generatedQuestions = buildDemoQuestions(project)
       .filter((question) => question.focus === filter || question.focus === "Joint")
       .map((question) => question.focus === "Joint" ? { ...question, focus: filter } : question);
@@ -234,7 +268,7 @@ export default function MeetingPreparation({
         </div>
 
         <Badge appearance="tint" color="warning">
-          Demo suggestions
+          {scope === "EA" ? "AI drafts · Review before use" : "Demo suggestions"}
         </Badge>
       </div>
 
@@ -244,7 +278,7 @@ export default function MeetingPreparation({
           disabled={!canPrepare}
           onClick={prepareQuestions}
         >
-          Prepare questions with AI
+          {busy ? "Preparing questions…" : "Prepare questions with AI"}
         </Button>
 
         <Button disabled={!canPrepare} onClick={addQuestion}>
@@ -256,6 +290,7 @@ export default function MeetingPreparation({
         </Badge>
       </div>
 
+      {error && <p role="alert">{error}</p>}
       {questions.length === 0 ? (
         <p className="workspace-secondary">
           Prepare the initial question set or add your own.
@@ -293,7 +328,7 @@ export default function MeetingPreparation({
           >
             <div className="workspace-tags">
               <Badge appearance="tint" color={manual ? "warning" : "brand"}>
-                {manual ? "Your question" : "AI suggestion · Demo"}
+                {manual ? "Your question" : scope === "EA" ? "AI suggestion" : "AI suggestion · Demo"}
               </Badge>
               <Badge appearance="tint" color="brand">
                 {question.focus}

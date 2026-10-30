@@ -4,7 +4,8 @@ import {
   Textarea,
 } from "@fluentui/react-components";
 
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { chatWithEA } from "./api/projects";
 import "./PreparationChat.css";
 
 import type { PreparationScope } from "./auth/preparationAccess";
@@ -35,6 +36,7 @@ interface PreparationChatProps {
   disabled?: boolean;
   scope?: PreparationScope;
   allowedFocuses?: QuestionFocus[];
+  connected?: boolean;
 }
 
 function buildDemoReply(
@@ -139,7 +141,8 @@ export default function PreparationChat({
   onMessagesChange,
   onDraftChange,
   onAddQuestion,
-  disabled = false,
+  disabled: accessDisabled = false,
+  connected = false,
   scope = "All",
   allowedFocuses = ["Joint", "EA", "Security", "RAI"],
   inputLabel = "Ask the preparation assistant",
@@ -149,11 +152,21 @@ export default function PreparationChat({
   "Chat is held locally while the workspace remains open. Only questions you explicitly add enter the meeting question list.",
 }: PreparationChatProps) {
   const inputId = useId();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const active = useRef<AbortController | null>(null);
+  useEffect(() => { setBusy(false); setError(""); return () => active.current?.abort(); }, [project.demandId, scope, connected]);
+  const disabled = accessDisabled || busy;
 
-  function sendMessage() {
+  async function sendMessage() {
     const prompt = draft.trim();
 
     if (disabled || !prompt) {
+      return;
+    }
+
+    if (connected && (messages.length > 20 || messages.reduce((total, m) => total + m.text.length, prompt.length) > 12000)) {
+      setError("This conversation has reached its limit. Clear chat to start a new conversation.");
       return;
     }
 
@@ -163,7 +176,27 @@ export default function PreparationChat({
       text: prompt,
     };
 
-    const reply = buildDemoReply(prompt, project, questions, scope);
+    let reply: PreparationChatMessage;
+    if (connected) {
+      const controller = new AbortController();
+      active.current = controller;
+      setBusy(true); setError("");
+      try {
+        const result = await chatWithEA(project.demandId, prompt,
+          messages.map(({ role, text }) => ({ role, text })), controller.signal);
+        if (controller.signal.aborted) return;
+        reply = { id: crypto.randomUUID(), role: "assistant", text: result.text,
+          proposedQuestion: result.proposedQuestion ? { ...result.proposedQuestion,
+            id: crypto.randomUUID(), focus: "EA", selected: false, source: "ai" } : undefined };
+      } catch (err) {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not contact the assistant.");
+        return;
+      } finally {
+        if (!controller.signal.aborted) setBusy(false);
+      }
+    } else {
+      reply = buildDemoReply(prompt, project, questions, scope);
+    }
 
     onMessagesChange([...messages, userMessage, reply]);
     onDraftChange("");
@@ -193,7 +226,7 @@ export default function PreparationChat({
             <article key={message.id} className={`eg-chat-row eg-chat-row--${message.role}`}>
               {message.role === "assistant" && <span className="eg-chat-avatar" aria-hidden="true">💬</span>}
               <div className={`eg-chat-bubble eg-chat-bubble--${message.role}`}>
-                <strong>{message.role === "user" ? "You" : "Assistant · sample reply"}</strong>
+                <strong>{message.role === "user" ? "You" : connected ? "EA assistant" : "Assistant · sample reply"}</strong>
                 <p className="eg-chat-text">{message.text}</p>
                 {proposedQuestion && (
                   <div className="eg-chat-proposal">
@@ -213,18 +246,21 @@ export default function PreparationChat({
           );
         })}
       </div>
+      {busy && <p role="status">EA assistant is thinking…</p>}
+      {error && <p role="alert">{error}</p>}
+      {connected && messages.length > 0 && <Button disabled={busy} onClick={() => { onMessagesChange([]); setError(""); }}>Clear chat</Button>}
       <div className="eg-chat-composer">
         <label className="eg-chat-label" htmlFor={inputId}>{inputLabel}</label>
-        <Textarea id={inputId} value={draft} rows={2} disabled={disabled}
+        <Textarea id={inputId} value={draft} rows={2} disabled={disabled} maxLength={8000}
           placeholder="Ask what to clarify or request a tailored question…"
           onChange={(_, data) => { if (!disabled) onDraftChange(data.value); }} />
         <div className="eg-chat-composer-actions">
-          <span>Sample replies · AI connection pending</span>
+          <span>{connected ? "AI suggestions · Verify before use" : "Sample replies · AI connection pending"}</span>
           <Button appearance="primary" disabled={disabled || !draft.trim()} onClick={sendMessage}
             icon={<span aria-hidden="true">➤</span>}>Send</Button>
         </div>
       </div>
-      <p className="eg-chat-footer">{footerText}</p>
+      <p className="eg-chat-footer">{connected ? "Chat is a workspace draft and clears on refresh. Messages and project intake are sent to the EA assistant. Only questions you add enter the meeting list." : footerText}</p>
     </section>
   );
 }

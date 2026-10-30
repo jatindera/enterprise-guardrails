@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { beforeAll, afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ReviewSession from "./ReviewSession";
 import type { Project } from "./types";
 
+vi.mock("./api/projects", () => ({
+  generateEAQuestions: vi.fn(async () => ({ questions: [{question: "Which systems are involved?", reason: "Confirm scope.", priority: "Essential"}] })),
+  chatWithEA: vi.fn(async () => ({text: "Clarify boundaries.", proposedQuestion: {question: "Which integrations are needed?", reason: "Confirm scope.", priority: "Follow-up"}})),
+}));
 const identity = vi.hoisted(() => ({ roles: ["Admin"] as string[] }));
 vi.mock("./auth/AuthGate", () => ({ useAuth: () => ({roles: identity.roles}) }));
 vi.mock("./MeetingReview", () => ({ default: () => null }));
@@ -16,11 +20,12 @@ function show(domain: "EA" | "Security" | "RAI" = "EA") {
   render(<ReviewSession project={project} preparationDomain={domain} onAcceptedReviewChange={() => {}} />);
 }
 describe("preparation context", () => {
- it.each(["Admin", "enterprise-architect"])("shows fixed EA for %s and creates EA questions", (role) => {
+ it.each(["Admin", "enterprise-architect"])("shows fixed EA for %s and creates EA questions", async (role) => {
    identity.roles=[role]; show();
    expect(screen.getByLabelText("Preparation domain: EA")).toBeTruthy();
    expect(screen.queryByRole("combobox")).toBeNull();
    fireEvent.click(screen.getByRole("button",{name:"Prepare questions with AI"}));
+   await waitFor(() => expect(document.querySelectorAll(".prepared-question").length).toBeGreaterThan(0));
    const cards=Array.from(document.querySelectorAll(".prepared-question"));
    expect(cards.length).toBeGreaterThan(0);
    cards.forEach((card) => expect(card.querySelector(".workspace-tags")?.textContent).toContain("EA"));
@@ -41,10 +46,10 @@ describe("preparation context", () => {
    fireEvent.click(screen.getByRole("button",{name:"Add my question"}));
    expect(document.querySelector(".prepared-question")?.textContent).toContain("Security");
  });
- it("keeps preparation chat in EA context for Admin", () => {
+ it("keeps preparation chat in EA context for Admin", async () => {
    show(); fireEvent.change(screen.getByRole("textbox"),{target:{value:"What about SSO?"}});
    fireEvent.click(screen.getByRole("button",{name:"Send"}));
-   expect(document.querySelector(".preparation-chat-proposal")?.textContent).toContain("EA");
-   expect(document.querySelector(".preparation-chat-proposal")?.textContent).not.toContain("Security");
+   await waitFor(() => expect(document.querySelector(".eg-chat-proposal")?.textContent).toContain("EA"));
+   expect(document.querySelector(".eg-chat-proposal")?.textContent).not.toContain("Security");
  });
 });

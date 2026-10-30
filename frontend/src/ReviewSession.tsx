@@ -178,7 +178,7 @@ export default function ReviewSession({
         ...current,
         {
           ...question,
-          selected: true,
+          selected: false,
         },
       ];
     });
@@ -302,6 +302,7 @@ export default function ReviewSession({
                 questions={preparedQuestions}
                 onQuestionsChange={setPreparedQuestions}
                 scope={preparationScope}
+                canEditOverride={canPrepare}
               />
 
               <p className="workspace-secondary">
@@ -325,7 +326,7 @@ export default function ReviewSession({
               <h2>Preparation AI assistant</h2>
 
               <Badge appearance="tint" color="warning">
-                AI connection pending
+                {preparationScope === "EA" ? "Foundry agent" : "AI connection pending"}
               </Badge>
             </div>
 
@@ -364,6 +365,7 @@ export default function ReviewSession({
                 onAddQuestion={addQuestionFromChat}
                 disabled={!canPrepare}
                 scope={preparationScope}
+                connected={preparationScope === "EA"}
                 allowedFocuses={canPrepare ? [preparationScope] : []}
               />
             </div>

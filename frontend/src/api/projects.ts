@@ -41,13 +41,14 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
   responseKind: "json" | "blob" = "json",
+  timeoutMs = 45000,
 ): Promise<T> {
   const controller = new AbortController();
   const externalSignal = options.signal;
   const abort = () => controller.abort();
   if (externalSignal?.aborted) controller.abort();
   externalSignal?.addEventListener("abort", abort, { once: true });
-  const timeout = window.setTimeout(abort, 45000);
+  const timeout = window.setTimeout(abort, timeoutMs);
 
   try {
     const token = await getAccessToken();
@@ -393,4 +394,26 @@ export function submitProductionDeployment(demandId: string, productionStatus: "
   return request(`/api/projects/${encodeURIComponent(demandId)}/production-deployment`, {
     method: "PUT", body: JSON.stringify({ productionStatus, goLiveDate, comments, expectedRevision }),
   });
+}
+
+
+export interface EAQuestionDraft {
+  question: string;
+  reason: string;
+  priority: "Essential" | "Follow-up";
+}
+
+export function generateEAQuestions(demandId: string, signal?: AbortSignal) {
+  return request<{ questions: EAQuestionDraft[] }>(
+    `/api/projects/${encodeURIComponent(demandId)}/ea-preparation/questions`,
+    { method: "POST", signal }, "json", 240000,
+  );
+}
+
+export function chatWithEA(demandId: string, message: string,
+  history: { role: "user" | "assistant"; text: string }[], signal?: AbortSignal) {
+  return request<{ text: string; proposedQuestion: EAQuestionDraft | null }>(
+    `/api/projects/${encodeURIComponent(demandId)}/ea-preparation/chat`,
+    { method: "POST", body: JSON.stringify({ message, history }), signal }, "json", 240000,
+  );
 }

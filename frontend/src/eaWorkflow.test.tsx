@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
 import { useState } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import ProjectWorkspace from "./ProjectWorkspace";
 import ReviewSession from "./ReviewSession";
 import type { Project } from "./types";
 
+vi.mock("./api/projects", () => ({
+  getEAAccess: vi.fn(async () => ({canEdit: true, canClose: true, canManageAdditional: true, revision: 1, primaryResolved: true})),
+  getSecurityAccess: vi.fn(async () => ({canEdit: true, revision: 1})),
+  getRAIAccess: vi.fn(async () => ({canEdit: true, revision: 1})),
+}));
 const mockUpdate = vi.hoisted(() => vi.fn());
 vi.mock("./auth/AuthGate", () => ({ useAuth: () => ({roles:["Admin"]}) }));
 vi.mock("./ProjectUpdates", () => ({ useProjectUpdate: () => mockUpdate }));
+vi.mock("./TranscriptUpload", () => ({ default: ({onAttachmentChange}: {onAttachmentChange: (value: unknown) => void}) =>
+  <button onClick={() => onAttachmentChange({fileName: "meeting.txt", text: "The application reads customer data.", attachedAt: "2026-10-30T00:00:00Z"})}>Attach test transcript</button>
+}));
 vi.mock("./ProjectReviewers", () => ({ default: () => null }));
 vi.mock("./SecurityRecord", () => ({ default: () => <div>SecurityRecord</div> }));
 vi.mock("./RAIAssessment", () => ({ default: () => <div>RAIAssessment</div> }));
@@ -26,7 +34,7 @@ beforeAll(() => { vi.stubGlobal("ResizeObserver", class {observe() {} unobserve(
 afterAll(() => vi.unstubAllGlobals());
 afterEach(cleanup);
 const project: Project = {
-  demandId:"3845", name:"AI Project", businessFunction:"IT", assignedEA:"Architect", stage:"Architecture review",
+  revision: 1, demandId:"3845", name:"AI Project", businessFunction:"IT", assignedEA:"Architect", stage:"Architecture review",
   eaStatus:"Pending",securityStatus:"Pending",raiStatus:"Pending",eaComplexity:"Not assessed",securityRisk:"Not assessed",raiRisk:"Not assessed",
   nextAction:"Review",overdueActions:0,arbStatus:"Not scheduled",
 };
@@ -49,9 +57,10 @@ describe("combined EA assessment", () => {
    expect(screen.getByText("EA requirements & pending items")).toBeTruthy();
    expect(screen.getByRole("button",{name:"Open review meeting"})).toBeTruthy();
  });
- it("retains the meeting selection and EA assessment draft across phase and project section switches", () => {
+ it("retains the meeting selection and EA assessment draft across phase and project section switches", async () => {
    render(<ProjectWorkspace project={project} onBack={() => {}} onSaveRAIAssignment={async () => {}} />);
    const nav=goEA();
+   await waitFor(() => expect((screen.getByRole("button",{name:"Add my question"}) as HTMLButtonElement).disabled).toBe(false));
    fireEvent.click(screen.getByRole("button",{name:"Add my question"}));
    const question=screen.getByLabelText("Question") as HTMLTextAreaElement;
    fireEvent.change(question,{target:{value:"My retained question"}});
@@ -64,26 +73,28 @@ describe("combined EA assessment", () => {
    fireEvent.change(approval,{target:{value:"Approval state"}});
    fireEvent.click(screen.getByRole("button",{name:"Prepare"}));
    expect((screen.getByLabelText("Question") as HTMLTextAreaElement).value).toBe("My retained question");
-   fireEvent.click(within(nav).getByRole("button",{name:"Security record"}));
+   fireEvent.click(within(nav).getByRole("button",{name:"Security assessment"}));
    fireEvent.click(within(nav).getByRole("button",{name:"EA assessment"}));
    fireEvent.click(screen.getAllByRole("button",{name:"EA assessment"})[1]);
    expect((screen.getByPlaceholderText("Describe the EA requirement or pending item…") as HTMLTextAreaElement).value).toBe("Keep this EA draft");
    expect((screen.getByLabelText("Diagram draft") as HTMLInputElement).value).toBe("Diagram state");
    expect((screen.getByLabelText("Approval draft") as HTMLInputElement).value).toBe("Approval state");
  });
- it("shares accepted meeting review with the EA panel and returns via Open review meeting", () => {
+ it("shares accepted meeting review with the EA panel and returns via Open review meeting", async () => {
    render(<ProjectWorkspace project={project} onBack={() => {}} onSaveRAIAssignment={async () => {}} />);
    goEA();
+   await waitFor(() => expect((screen.getByRole("button",{name:"Add my question"}) as HTMLButtonElement).disabled).toBe(false));
    fireEvent.click(screen.getByRole("button",{name:"Add my question"}));
    fireEvent.change(screen.getByLabelText("Question"),{target:{value:"What data moves?"}});
+   fireEvent.click(screen.getByRole("button",{name:"Select for meeting"}));
    fireEvent.click(screen.getByRole("button",{name:"Start meeting"}));
    fireEvent.click(screen.getByRole("button",{name:"Use question"}));
    fireEvent.click(screen.getByRole("button",{name:"Review meeting"}));
+   fireEvent.click(screen.getByRole("button",{name:"Attach test transcript"}));
    fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
    fireEvent.click(screen.getByRole("button",{name:"Accept review draft"}));
    fireEvent.click(screen.getAllByRole("button",{name:"EA assessment"})[1]);
-   expect(screen.getByText("Available")).toBeTruthy();
-   expect(screen.getByText("Read accepted meeting review")).toBeTruthy();
+   expect(screen.getByText("Accepted meeting review · Available")).toBeTruthy();
    fireEvent.click(screen.getByRole("button",{name:"Open review meeting"}));
    expect(screen.getByRole("button",{name:"Accept review draft"})).toBeTruthy();
  });
@@ -96,7 +107,7 @@ describe("combined EA assessment", () => {
  });
  it("accepts a different assessment panel and facilitator for reuse", () => {
    render(<ReviewSession project={project} onAcceptedReviewChange={() => {}} heading="Security review" facilitatorName="Christina Kelly" assessmentTab={{ label:"Security assessment", render: (openReview) => <section><p>Security assessment panel</p><button onClick={openReview}>Return to meeting review</button></section> }} />);
-   expect(screen.getByRole("heading", {name:"Security review"})).toBeTruthy();
+   expect(screen.queryByRole("heading", {name:"Shared review session"})).toBeNull();
    expect(screen.getByText(/Facilitator: Christina Kelly/)).toBeTruthy();
    fireEvent.click(screen.getByRole("button",{name:"Security assessment"}));
    expect(screen.getByText("Security assessment panel")).toBeTruthy();
