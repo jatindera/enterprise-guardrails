@@ -2,7 +2,6 @@ import {
   Badge,
   Button,
   Checkbox,
-  Input,
   Textarea,
 } from "@fluentui/react-components";
 
@@ -43,6 +42,8 @@ interface PreparationChatProps {
   scope?: PreparationScope;
   allowedFocuses?: QuestionFocus[];
   connected?: boolean;
+  chatMode?: "prepare" | "meeting";
+  beforeSend?: () => Promise<void>;
 }
 
 function buildDemoReply(
@@ -149,6 +150,8 @@ export default function PreparationChat({
   onAddQuestion,
   disabled: accessDisabled = false,
   connected = false,
+  chatMode = "prepare",
+  beforeSend,
   scope = "All",
   allowedFocuses = ["Joint", "EA", "Security", "RAI"],
   inputLabel = "Ask the preparation assistant",
@@ -159,13 +162,11 @@ export default function PreparationChat({
   "Chat is held locally while the workspace remains open. Only questions you explicitly add enter the meeting question list.",
 }: PreparationChatProps) {
   const inputId = useId();
-  const searchInputId = useId();
   const [searchWeb, setSearchWeb] = useState(false);
-  const [publicQuery, setPublicQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const active = useRef<AbortController | null>(null);
-  useEffect(() => { setBusy(false); setError(""); setSearchWeb(false); setPublicQuery(""); return () => active.current?.abort(); }, [project.demandId, scope, connected]);
+  useEffect(() => { setBusy(false); setError(""); setSearchWeb(false); return () => active.current?.abort(); }, [project.demandId, scope, connected]);
   const disabled = accessDisabled || busy;
 
   async function sendMessage() {
@@ -177,11 +178,6 @@ export default function PreparationChat({
 
     if (connected && (messages.length > 20 || messages.reduce((total, m) => total + m.text.length, prompt.length) > 12000)) {
       setError("This conversation has reached its limit. Clear chat to start a new conversation.");
-      return;
-    }
-
-    if (connected && searchWeb && !publicQuery.trim()) {
-      setError("Enter a public technical search query first.");
       return;
     }
 
@@ -197,9 +193,11 @@ export default function PreparationChat({
       active.current = controller;
       setBusy(true); setError("");
       try {
+        await beforeSend?.();
+        if (controller.signal.aborted) return;
         const result = await chatWithEA(project.demandId, prompt,
           messages.map(({ role, text }) => ({ role, text })), controller.signal,
-          searchWeb ? { searchWeb: true, publicSearchQuery: publicQuery.trim() } : undefined);
+          searchWeb ? { searchWeb: true } : undefined, chatMode);
         if (controller.signal.aborted) return;
         reply = { id: crypto.randomUUID(), role: "assistant", text: result.text,
           sources: result.sources, webSearched: result.webSearched, searchedAt: result.searchedAt,
@@ -267,7 +265,7 @@ export default function PreparationChat({
                       onClick={() => {
                         if (!disabled && allowedFocuses.includes(proposedQuestion.focus)) onAddQuestion(proposedQuestion);
                       }}>
-                      {alreadyAdded ? "Already in question list" : "Add to meeting questions"}
+                      {alreadyAdded ? "Already in question list" : chatMode === "meeting" ? "Add to additional questions" : "Add to meeting questions"}
                     </Button>
                   </div>
                 )}
@@ -294,22 +292,18 @@ export default function PreparationChat({
           <div className="eg-chat-web-options">
             <Checkbox label="Search web" checked={searchWeb} disabled={disabled}
               onChange={(_, data) => setSearchWeb(data.checked === true)} />
-            {searchWeb && <div className="eg-chat-public-query">
-              <label htmlFor={searchInputId}>Public technical search query</label>
-              <Input id={searchInputId} value={publicQuery} maxLength={240} disabled={disabled}
-                placeholder="Microsoft Agent 365 SDK published security advisories"
-                onChange={(_, data) => setPublicQuery(data.value)} />
-              <small>Only this query is sent to web search. Use public product/version terms; exclude company details, personal data and secrets. Search adds usage charges.</small>
-            </div>}
+            {searchWeb && <p className="eg-chat-web-note">Searches public sources using a short query prepared from your message. Exclude confidential details. Search adds usage charges.</p>}
           </div>
         )}
         <div className="eg-chat-composer-actions">
           <span>{connected ? "AI suggestions · Verify before use" : "Sample replies · AI connection pending"}</span>
-          <Button appearance="primary" disabled={disabled || !draft.trim() || (searchWeb && !publicQuery.trim())} onClick={sendMessage}
+          <Button appearance="primary" disabled={disabled || !draft.trim()} onClick={sendMessage}
             icon={<span aria-hidden="true">➤</span>}>Send</Button>
         </div>
       </div>
-      <p className="eg-chat-footer">{connected ? "Chat is a workspace draft and clears on refresh. Messages and project intake are sent to the EA assistant. Only questions you add enter the meeting list." : footerText}</p>
+      <p className="eg-chat-footer">{connected ? chatMode === "meeting"
+        ? "Chat clears on refresh. The assistant cannot hear the meeting; paste relevant answers for help. Questions you explicitly add are saved with this project."
+        : "Chat is a workspace draft and clears on refresh. Messages and project intake are sent to the EA assistant. Only questions you add enter the meeting list." : footerText}</p>
     </section>
   );
 }

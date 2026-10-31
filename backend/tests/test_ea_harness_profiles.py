@@ -97,7 +97,8 @@ def test_one_real_harness_run_makes_one_model_request_without_tools(monkeypatch)
 def test_profiles_are_named_versioned_and_immutable():
     assert PREPARE_QUESTIONS.name == 'prepare_questions'
     assert PREPARATION_CHAT.name == 'preparation_chat'
-    assert PREPARE_QUESTIONS.version == PREPARATION_CHAT.version == '1.0.0'
+    assert PREPARE_QUESTIONS.version == '1.0.0'
+    assert PREPARATION_CHAT.version == '1.0.1'
     with pytest.raises(FrozenInstanceError):
         PREPARE_QUESTIONS.instructions = 'Replace instructions'
 

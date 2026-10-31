@@ -219,9 +219,8 @@ export default function ReviewSession({
     if (!canPrepare) return;
     const text = manualQuestionDraft.trim();
 
-    if (!text) {
-      return;
-    }
+    if (!text || [...preparedQuestions, ...additionalQuestions].some(q =>
+      q.question.trim().toLowerCase() === text.toLowerCase())) return;
 
     setAdditionalQuestions((current) => [
       ...current,
@@ -231,6 +230,7 @@ export default function ReviewSession({
         priority: "Follow-up",
         question: text,
         reason: "Added manually during the meeting.",
+        source: "manual",
         selected: true,
       },
     ]);
@@ -239,7 +239,8 @@ export default function ReviewSession({
   }
 
   function addMeetingQuestionFromChat(question: PreparedQuestion) {
-    if (!canPrepare) return;
+    if (!canPrepare || question.focus !== preparationDomain || preparedQuestions.some(q =>
+      q.question.trim().toLowerCase() === question.question.trim().toLowerCase())) return;
     setAdditionalQuestions((current) => {
       const alreadyExists = current.some(
         (item) =>
@@ -256,7 +257,7 @@ export default function ReviewSession({
         {
           ...question,
           selected: true,
-          reason: "Added from meeting chat.",
+          reason: question.reason || "Added from meeting chat.",
         },
       ];
     });
@@ -435,7 +436,7 @@ export default function ReviewSession({
 
 
                 <p className="muted-text">
-                  Choose a question to ask. Asked questions are saved in discussion history; upload the transcript in Review meeting to capture answers.
+                  Choose a question to ask. Marked questions are saved in discussion history; the transcript will be used in Review meeting to capture what was actually discussed.
                 </p>
 
                 {preparedQuestions.filter(
@@ -483,6 +484,8 @@ export default function ReviewSession({
                   Add a question manually
                   <Textarea
                     value={manualQuestionDraft}
+                    disabled={!canPrepare}
+                    maxLength={4000}
                     rows={2}
                     placeholder="Enter a question to ask during this meeting…"
                     onChange={(_, data) => setManualQuestionDraft(data.value)}
@@ -491,7 +494,7 @@ export default function ReviewSession({
 
                 <Button
                   appearance="secondary"
-                  disabled={!manualQuestionDraft.trim()}
+                  disabled={!canPrepare || !manualQuestionDraft.trim()}
                   onClick={addManualMeetingQuestion}
                 >
                   Add question
@@ -571,8 +574,8 @@ export default function ReviewSession({
             <div className="panel-heading">
               <h2>Meeting Assistant</h2>
 
-              <Badge appearance="tint" color="warning">
-                AI connection pending
+              <Badge appearance="tint" color={preparationDomain === "EA" ? "informative" : "warning"}>
+                {preparationDomain === "EA" ? "Foundry agent" : "AI connection pending"}
               </Badge>
             </div>
 
@@ -588,6 +591,10 @@ export default function ReviewSession({
                 onMessagesChange={setMeetingChatMessages}
                 onDraftChange={setMeetingChatDraft}
                 onAddQuestion={addMeetingQuestionFromChat}
+                connected={preparationDomain === "EA"}
+                chatMode="meeting"
+                beforeSend={persistence.flush}
+                allowedFocuses={[preparationDomain]}
                 welcomeTitle="Your review assistant"
                 inputLabel="Ask the meeting assistant"
                 emptyMessage="Ask for help with a stakeholder answer or request a follow-up question."

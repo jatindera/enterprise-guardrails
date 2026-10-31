@@ -414,10 +414,10 @@ export interface EAWebSource { title: string; url: string }
 
 export function chatWithEA(demandId: string, message: string,
   history: { role: "user" | "assistant"; text: string }[], signal?: AbortSignal,
-  web?: { searchWeb: true; publicSearchQuery: string }) {
+  web?: { searchWeb: true }, mode: "prepare" | "meeting" = "prepare") {
   return request<{ text: string; proposedQuestion: EAQuestionDraft | null;
     sources?: EAWebSource[]; webSearched?: boolean; searchedAt?: string | null }>(
-    `/api/projects/${encodeURIComponent(demandId)}/ea-preparation/chat`,
+    `/api/projects/${encodeURIComponent(demandId)}/ea-preparation/${mode === "meeting" ? "meeting-chat" : "chat"}`,
     { method: "POST", body: JSON.stringify({ message, history, ...web }), signal }, "json", 240000,
   );
 }

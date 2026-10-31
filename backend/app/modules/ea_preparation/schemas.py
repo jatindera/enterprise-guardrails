@@ -1,4 +1,3 @@
-import re
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from app.core.api_model import APIModel
@@ -22,7 +21,6 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     history: list[Message] = Field(default_factory=list, max_length=20)
     search_web: bool = Field(default=False, alias='searchWeb', strict=True)
-    public_search_query: str | None = Field(default=None, alias='publicSearchQuery', max_length=240)
 
 
     @model_validator(mode='after')
@@ -30,14 +28,6 @@ class ChatRequest(BaseModel):
         self.message = self.message.strip()
         if not self.message or sum(len(m.text) for m in self.history) + len(self.message) > 12000:
             raise ValueError('Conversation is empty or too large; start a new conversation.')
-        if self.search_web:
-            query = (self.public_search_query or '').strip()
-            if (not query or any(ord(c) < 32 for c in query) or
-                re.search(r'@|https?://|www\.|[A-Za-z]:\\|(?:\d{1,3}\.){3}\d{1,3}', query)):
-                raise ValueError('Enter a public technical query without emails, URLs, file paths or IP addresses.')
-            self.public_search_query = query
-        elif self.public_search_query is not None:
-            raise ValueError('Public search query requires Search web.')
         return self
 
 
@@ -75,6 +65,7 @@ class WebSource(BaseModel):
 
 
 class ChatReply(APIModel):
+    out_of_scope: bool = Field(default=False, strict=True)
     text: str = Field(min_length=1, max_length=16000)
     proposed_question: Question | None = Field(default=None, alias='proposedQuestion')
     sources: list[WebSource] = Field(default_factory=list, max_length=8)

@@ -30,8 +30,7 @@
 }
 
 .eg-chat-web-options { margin-top: 10px; }
-.eg-chat-public-query { display: grid; gap: 6px; margin: 4px 0 12px; }
-.eg-chat-public-query small, .eg-chat-source-time { color: #526881; font-size: 12px; }
+.eg-chat-web-note, .eg-chat-source-time { color: #526881; font-size: 12px; }
 .eg-chat-web-sources { margin-top: 12px; border-top: 1px solid #d8e5f1; padding-top: 10px; }
 .eg-chat-web-sources ol { padding-left: 22px; margin: 8px 0; }
 .eg-chat-web-sources li { margin: 6px 0; overflow-wrap: anywhere; }

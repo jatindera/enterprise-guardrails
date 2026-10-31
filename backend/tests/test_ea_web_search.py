@@ -6,10 +6,18 @@ import pytest
 from openai.types.responses import Response
 from app.agents.config import FoundrySettings
 from app.agents.tools import public_web
-from app.modules.ea_preparation.router import hosted_invoker, web_searcher
+from app.modules.ea_preparation.router import hosted_invoker, web_searcher, public_query_planner
+from app.agents.tools.public_query import PublicQueryPlan
 from app.core.auth import current_user
 from test_ea_preparation import setup_project, PRIMARY
 from test_project_api import client, database
+
+
+@pytest.fixture(autouse=True)
+def query_planner(client):
+    planner = Mock(return_value=PublicQueryPlan(query='Microsoft Agent 365 SDK security advisories'))
+    client.app.dependency_overrides[public_query_planner] = lambda: planner
+    return planner
 
 
 def evidence():
@@ -25,8 +33,7 @@ def test_public_query_is_only_search_input_and_evidence_reaches_ea(client, datab
     client.app.dependency_overrides[web_searcher] = lambda: search
     client.app.dependency_overrides[hosted_invoker] = lambda: invoke
     r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'Our confidential project uses this SDK.',
-        'history':[{'role':'user','text':'Internal meeting notes'}], 'searchWeb':True,
-        'publicSearchQuery':'Microsoft Agent 365 SDK security advisories'})
+        'history':[{'role':'user','text':'Internal meeting notes'}], 'searchWeb':True})
     assert r.status_code==200, r.text
     search.assert_called_once_with('Microsoft Agent 365 SDK security advisories')
     assert 'public_web_evidence' in invoke.call_args.args[0]
@@ -49,22 +56,12 @@ def test_search_off_and_question_generation_never_search(client, database):
     search.assert_not_called()
 
 
-@pytest.mark.parametrize('query',[None,'',' ', 'user@example.com','https://internal.example.com', '10.0.0.1 system', 'x'*241, 'line\nbreak'])
-def test_invalid_public_queries_never_search(client,database,query):
-    setup_project(client,database)
-    search=Mock()
-    client.app.dependency_overrides[web_searcher]=lambda:search
-    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'Hi','searchWeb':True,'publicSearchQuery':query})
-    assert r.status_code==422
-    search.assert_not_called()
-
-
 def test_unauthorized_search_denied_before_tool_call(client,database):
     setup_project(client,database)
     client.app.dependency_overrides[current_user]=lambda:{'objectId':str(PRIMARY),'roles':['general-users']}
     search=Mock()
     client.app.dependency_overrides[web_searcher]=lambda:search
-    assert client.post('/api/projects/3601/ea-preparation/chat',json={'message':'Hi','searchWeb':True,'publicSearchQuery':'SDK security'}).status_code==403
+    assert client.post('/api/projects/3601/ea-preparation/chat',json={'message':'Hi','searchWeb':True}).status_code==403
     search.assert_not_called()
 
 
@@ -74,7 +71,7 @@ def test_search_failure_no_silent_fallback_or_error_detail(client,database):
     invoke=Mock()
     client.app.dependency_overrides[web_searcher]=lambda:search
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
-    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'Hi','searchWeb':True,'publicSearchQuery':'SDK security'})
+    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'Hi','searchWeb':True})
     assert r.status_code==502 and 'SECRET' not in r.text
     invoke.assert_not_called()
 
@@ -125,7 +122,7 @@ def test_long_chat_rejected_before_paid_search(client,database):
     setup_project(client,database)
     search=Mock()
     client.app.dependency_overrides[web_searcher]=lambda:search
-    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'x'*6500,'searchWeb':True,'publicSearchQuery':'SDK advisories'})
+    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'x'*6500,'searchWeb':True})
     assert r.status_code==422
     search.assert_not_called()
 
@@ -136,5 +133,29 @@ def test_provider_citations_override_model_invented_sources(client,database):
     invoke=Mock(return_value=json.dumps({'text':'Published finding [1].','proposedQuestion':None,
         'sources':[{'title':'Invented','url':'https://example.com/fake'}], 'webSearched':False}))
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
-    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'Hi','searchWeb':True,'publicSearchQuery':'SDK advisories'})
+    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'Hi','searchWeb':True})
     assert r.status_code==200 and r.json()['sources']==evidence().sources
+
+
+def test_ambiguous_request_returns_clarification_without_search(client,database,query_planner):
+    setup_project(client,database)
+    query_planner.return_value=PublicQueryPlan(clarification='Which public product and topic should I search?')
+    search=Mock(); invoke=Mock()
+    client.app.dependency_overrides[web_searcher]=lambda:search
+    client.app.dependency_overrides[hosted_invoker]=lambda:invoke
+    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'this SDK?', 'searchWeb':True,
+        'history':[{'role':'user','text':'Private project description'}]})
+    assert r.status_code==200 and r.json()['text'].startswith('Which public')
+    assert r.json()['webSearched'] is False
+    query_planner.assert_called_once_with('this SDK?')
+    search.assert_not_called(); invoke.assert_not_called()
+
+
+def test_planning_error_does_not_send_raw_message_to_search(client,database,query_planner):
+    setup_project(client,database)
+    query_planner.side_effect=ValueError('bad JSON')
+    search=Mock()
+    client.app.dependency_overrides[web_searcher]=lambda:search
+    r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'secret context', 'searchWeb':True})
+    assert r.status_code==502
+    search.assert_not_called()

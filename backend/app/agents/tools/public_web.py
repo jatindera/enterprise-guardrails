@@ -1,6 +1,6 @@
 """Public-only web evidence through MAF's native Foundry web-search tool.
 
-The API supplies a reviewer-entered public query, never intake or chat history.
+The API supplies a validated public query, never intake or chat history.
 One Responses request, one built-in tool call; no autonomous retry/research loop.
 """
 import asyncio

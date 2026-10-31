@@ -4,16 +4,16 @@ import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library
 import ReviewSession from "../src/ReviewSession";
 import type {Project} from "../src/types";
 import type {MeetingState} from "../src/api/projects";
-const mocks = vi.hoisted(() => ({get: vi.fn(), save: vi.fn()}));
+const mocks = vi.hoisted(() => ({get: vi.fn(), save: vi.fn(), chat: vi.fn()}));
 vi.mock("../src/auth/AuthGate", () => ({useAuth: () => ({roles: ["Admin"]})}));
 vi.mock("../src/api/projects", () => ({getMeetingPreparation: mocks.get, saveMeetingPreparation: mocks.save,
-  generateEAQuestions: vi.fn(), chatWithEA: vi.fn()}));
+  generateEAQuestions: vi.fn(), chatWithEA: mocks.chat}));
 const project = {demandId: "3845", name: "Example", assignedEA: "Architect", businessFunction: "IT"} as Project;
 const empty: MeetingState = {preparedQuestions: [], additionalQuestions: [], askedQuestionIds: [], currentQuestionId: null,
   revision: 0, canEdit: true, askedAt: {}};
 beforeAll(() => vi.stubGlobal("ResizeObserver", class {observe() {} unobserve() {} disconnect() {}}));
 afterAll(() => vi.unstubAllGlobals());
-beforeEach(() => {mocks.get.mockReset().mockResolvedValue(empty); mocks.save.mockReset();});
+beforeEach(() => {mocks.get.mockReset().mockResolvedValue(empty); mocks.save.mockReset(); mocks.chat.mockReset();});
 afterEach(cleanup);
 it("waits for the pending save before starting the meeting", async () => {
   let finish!: (value: MeetingState) => void;
@@ -49,4 +49,36 @@ it("restores selected questions, current question and discussion history after r
   expect(await screen.findByRole("button", {name: "Asked"})).toBeTruthy();
   expect(screen.getAllByText("Which systems are involved?").length).toBeGreaterThan(1);
   expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it("saves manual and explicitly added AI questions, and restores them after remount", async () => {
+  let stored = {...empty};
+  mocks.get.mockImplementation(async () => stored);
+  mocks.save.mockImplementation(async (_id, _domain, value) => {
+    stored = {...stored, ...value, revision: stored.revision + 1};
+    return stored;
+  });
+  mocks.chat.mockResolvedValue({text: "Clarify operational ownership.", proposedQuestion: {
+    question: "Who owns incident response?", reason: "Clarify support", priority: "Follow-up"}});
+  const show = () => render(<ReviewSession project={project} onAcceptedReviewChange={vi.fn()} />);
+  let view = show();
+  await waitFor(() => expect((screen.getByRole("button", {name: "Start meeting"}) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", {name: "Conduct meeting"}));
+  await screen.findByLabelText("Ask the meeting assistant");
+  fireEvent.change(screen.getByLabelText("Add a question manually"), {target: {value: "Which integrations need monitoring?"}});
+  fireEvent.click(screen.getByRole("button", {name: "Add question"}));
+  fireEvent.change(screen.getByLabelText("Ask the meeting assistant"), {target: {value: "Suggest a follow-up"}});
+  fireEvent.click(screen.getByRole("button", {name: "Send"}));
+  await screen.findByText("Clarify operational ownership.");
+  expect(mocks.save).toHaveBeenCalled();
+  expect(stored.additionalQuestions).toHaveLength(1); // Suggestions are not autosaved.
+  expect(mocks.chat.mock.calls[0][5]).toBe("meeting");
+  fireEvent.click(screen.getByRole("button", {name: "Add to additional questions"}));
+  await waitFor(() => expect(stored.additionalQuestions).toHaveLength(2), {timeout: 2500});
+  expect(stored.askedQuestionIds).toEqual([]);
+  view.unmount(); view = show();
+  await waitFor(() => expect((screen.getByRole("button", {name: "Start meeting"}) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", {name: "Conduct meeting"}));
+  expect(await screen.findByText("Who owns incident response?")).toBeTruthy();
+  expect(screen.getByText("Which integrations need monitoring?")).toBeTruthy();
 });

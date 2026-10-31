@@ -108,7 +108,7 @@ it("keeps the entire question list unchanged if regeneration fails", async () =>
   expect(screen.getByDisplayValue("Retain this draft?")).toBeTruthy();
 });
 
-it("sends only the separately entered public query as web options and renders source links", async () => {
+it("uses a single chat input for web search and renders source links", async () => {
   mocks.chat.mockResolvedValue({text: "Published advisory [1].", proposedQuestion: null, webSearched: true,
     sources: [{title: "Microsoft advisory", url: "https://msrc.microsoft.com/update-guide"}], searchedAt: "2026-10-31T09:00:00Z"});
   const change = vi.fn();
@@ -116,11 +116,11 @@ it("sends only the separately entered public query as web options and renders so
     onMessagesChange: change, onDraftChange: vi.fn(), onAddQuestion: vi.fn()};
   const view = render(<PreparationChat {...props} />);
   fireEvent.click(screen.getByRole("checkbox", {name: "Search web"}));
-  expect((screen.getByRole("button", {name: "Send"}) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.change(screen.getByLabelText("Public technical search query"), {target: {value: "Microsoft Agent 365 SDK advisories"}});
+  expect(screen.queryByLabelText("Public technical search query")).toBeNull();
+  expect(screen.getAllByRole("textbox")).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", {name: "Send"}));
   await waitFor(() => expect(change).toHaveBeenCalled());
-  expect(mocks.chat.mock.calls[0][4]).toEqual({searchWeb: true, publicSearchQuery: "Microsoft Agent 365 SDK advisories"});
+  expect(mocks.chat.mock.calls[0][4]).toEqual({searchWeb: true});
   view.rerender(<PreparationChat {...props} messages={change.mock.calls[0][0]} draft="" />);
   const link = screen.getByRole("link", {name: "Microsoft advisory"});
   expect(link.getAttribute("href")).toBe("https://msrc.microsoft.com/update-guide");
@@ -134,4 +134,16 @@ it("does not expose web search in demo or non-EA chat", () => {
   expect(screen.queryByRole("checkbox", {name: "Search web"})).toBeNull();
   view.rerender(<PreparationChat {...props} scope="RAI" />);
   expect(screen.queryByRole("checkbox", {name: "Search web"})).toBeNull();
+});
+
+
+it("does not send meeting chat when pending question saves fail", async () => {
+  const change = vi.fn();
+  render(<PreparationChat project={project} connected scope="EA" chatMode="meeting" messages={[]} draft="What next?" questions={[]}
+    beforeSend={async () => {throw new Error("Could not save meeting questions");}}
+    onMessagesChange={change} onDraftChange={vi.fn()} onAddQuestion={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", {name: "Send"}));
+  expect((await screen.findByRole("alert")).textContent).toContain("Could not save meeting questions");
+  expect(mocks.chat).not.toHaveBeenCalled();
+  expect(change).not.toHaveBeenCalled();
 });
