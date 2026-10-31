@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({get: vi.fn(), save: vi.fn(), chat: vi.fn()}));
 vi.mock("../src/auth/AuthGate", () => ({useAuth: () => ({roles: ["Admin"]})}));
 vi.mock("../src/api/projects", () => ({getMeetingPreparation: mocks.get, saveMeetingPreparation: mocks.save,
   generateEAQuestions: vi.fn(), chatWithEA: mocks.chat}));
+vi.mock("../src/api/eaReviews", () => ({
+  getEAMeetings: async () => ({meetings:[{id:"read-round",title:"Saved meeting",number:1,state:"Open",revision:1}],canEdit:false,latestAcceptedReview:null}),
+  getEAMeeting: async () => ({id:"read-round",title:"Saved meeting",number:1,state:"Open",revision:1,canEdit:false,canAccept:false,
+    transcripts:[{id:"read-file",fileName:"stored-transcript.txt",status:"Ready",sizeBytes:20}],reviews:[]}),
+}));
 const project = {demandId: "3845", name: "Example", assignedEA: "Architect", businessFunction: "IT"} as Project;
 const empty: MeetingState = {preparedQuestions: [], additionalQuestions: [], askedQuestionIds: [], currentQuestionId: null,
   revision: 0, canEdit: true, askedAt: {}};
@@ -81,4 +86,32 @@ it("saves manual and explicitly added AI questions, and restores them after remo
   fireEvent.click(screen.getByRole("button", {name: "Conduct meeting"}));
   expect(await screen.findByText("Who owns incident response?")).toBeTruthy();
   expect(screen.getByText("Which integrations need monitoring?")).toBeTruthy();
+});
+
+it("keeps multiple transcript attachments while switching phases and removes Meeting record", async () => {
+  render(<ReviewSession project={project} preparationDomain="Security" onAcceptedReviewChange={vi.fn()} />);
+  await waitFor(() => expect((screen.getByRole("button", {name: "Start meeting"}) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", {name: "Review meeting"}));
+  expect(screen.queryByRole("heading", {name: "Meeting record"})).toBeNull();
+  const files = ["session-one.txt", "session-two.vtt"].map(name => {
+    const file = new File(["Meeting transcript"], name, {type: "text/plain"});
+    Object.defineProperty(file, "text", {value: async () => "Meeting transcript"});
+    return file;
+  });
+  fireEvent.change(screen.getByLabelText("Meeting transcript files"), {target: {files}});
+  await screen.findByText("2 transcripts attached");
+  fireEvent.click(screen.getByRole("button", {name: "Prepare"}));
+  fireEvent.click(screen.getByRole("button", {name: "Review meeting"}));
+  expect(screen.getByText("session-one.txt")).toBeTruthy();
+  expect(screen.getByText("session-two.vtt")).toBeTruthy();
+});
+
+it("keeps stored-file read controls outside the disabled reviewer fieldset", async () => {
+  render(<ReviewSession project={project} canEditOverride={false} onAcceptedReviewChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", {name: "Review meeting"}));
+  await screen.findByText("stored-transcript.txt");
+  const preview=screen.getByRole("button", {name: "Preview"});
+  expect((preview as HTMLButtonElement).disabled).toBe(false);
+  expect(preview.closest("fieldset")?.hasAttribute("disabled")).toBe(false);
+  expect((screen.getByRole("button", {name: "Delete file"}) as HTMLButtonElement).disabled).toBe(true);
 });

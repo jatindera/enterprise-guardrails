@@ -33,7 +33,7 @@ interface MeetingReviewProps {
   assessmentName?: string;
   entries: CapturedAnswer[];
   corrections: ReviewerCorrection[];
-  transcript: TranscriptSource | null;
+  transcripts: TranscriptSource[];
   onAcceptedReviewChange: (
     review: AcceptedMeetingReview | null,
   ) => void;
@@ -46,7 +46,7 @@ export default function MeetingReview({
   assessmentName = "assessment",
   entries,
   corrections,
-  transcript,
+  transcripts,
   onAcceptedReviewChange,
 }: MeetingReviewProps) {
   const [reviewText, setReviewText] = useState("");
@@ -60,7 +60,7 @@ export default function MeetingReview({
     projectName,
     entries,
     corrections,
-    transcript,
+    transcripts,
   });
 
   const stale =
@@ -74,7 +74,7 @@ export default function MeetingReview({
   }, [stale, onAcceptedReviewChange]);
 
   const hasEvidence =
-    entries.length > 0 || Boolean(transcript?.text.trim());
+    entries.length > 0 || transcripts.some(item => Boolean(item.text.trim()));
 
   function reviewMeeting() {
     onAcceptedReviewChange(null);
@@ -101,11 +101,10 @@ export default function MeetingReview({
         .join("\n\n")
       : "No reviewer corrections recorded.";
 
-    const transcriptNote = transcript
-      ? `Attached: ${transcript.fileName}\n` +
-      "The transcript is available as an input. Full transcript " +
-      "analysis requires the connected backend agent."
-      : "No transcript attached. Review is based on captured notes.";
+    const transcriptNote = transcripts.length
+      ? transcripts.map((item, index) => `Transcript ${index + 1}: ${item.fileName}`).join("\n") +
+        "\nThese files are available as separate inputs. AI analysis requires the connected backend agent."
+      : "No transcripts attached. Review is based on captured notes.";
 
     const text = [
       `MEETING REVIEW — ${projectName}`,
@@ -192,14 +191,14 @@ export default function MeetingReview({
 
       <div className="workspace-panel-body">
         <p className="session-body-text">
-          Review the meeting notes, corrections, and transcript
+          Review the meeting notes, corrections, and transcripts
           together in one consolidated assessment.
         </p>
 
         <p className="workspace-secondary">
           Inputs: {entries.length} captured answers ·{" "}
-          {corrections.length} corrections · Transcript:{" "}
-          {transcript?.fileName || "Not attached"}
+          {corrections.length} corrections · Transcripts:{" "}
+          {transcripts.length ? `${transcripts.length} attached` : "Not attached"}
         </p>
 
         <div className="meeting-review-actions">

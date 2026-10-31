@@ -22,6 +22,9 @@ class Store:
         self.calls += 1
         if self.fail: raise ServiceRequestError('Unavailable')
         self.blobs[(container, name)] = data
+    def delete(self, container, name):
+        if getattr(self, "delete_fail", False): raise ServiceRequestError("Unavailable")
+        self.blobs.pop((container, name), None)
     def get(self, container, name, size, digest):
         data = self.blobs[(container, name)]
         assert len(data) == size and hashlib.sha256(data).hexdigest() == digest

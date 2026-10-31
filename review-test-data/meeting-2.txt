@@ -1,0 +1,11 @@
+Fictional stakeholder meeting 2 — use only as test data.
+Architect: What changed since our first meeting?
+Stakeholder: Operations has agreed to own production support.
+Architect: Did the team confirm the retention period?
+Stakeholder: The proposal is now 90 days instead of the 30 days mentioned in the first meeting. Business and Security still need to confirm it.
+Architect: What is the recovery time objective?
+Stakeholder: We propose a recovery time objective of four hours, subject to business confirmation.
+Architect: Is the technology platform decided?
+Stakeholder: No. We are still comparing SaaS and an internally developed application.
+Architect: How will support staff access the application?
+Stakeholder: We want to use enterprise SSO. The exact integration is still to be designed.

@@ -7,6 +7,7 @@ from azure.ai.projects import AIProjectClient
 from azure.ai.projects.models import VersionRefIndicator
 from azure.identity import AzureCliCredential, ManagedIdentityCredential
 from app.agents.config import FoundrySettings
+from .errors import EAInferenceError
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,13 @@ def invoke_hosted(payload: str) -> str:
                     timeout=settings.request_timeout_seconds, max_retries=0) as client:
                 response = client.responses.create(input=payload, store=False, stream=False,
                     extra_body={'agent_session_id': session.agent_session_id})
-            if response.status != 'completed' or not response.output_text or not response.output_text.strip():
-                raise ValueError('Hosted response was incomplete or empty.')
+            if response.status != 'completed':
+                reason = getattr(getattr(response, 'incomplete_details', None), 'reason', None)
+                raise EAInferenceError('output_limit' if reason == 'max_output_tokens' else 'incomplete')
+            if not response.output_text or not response.output_text.strip():
+                raise EAInferenceError('empty_output')
             if len(response.output_text) > 40000:
-                raise ValueError('Hosted response exceeded the output limit.')
+                raise EAInferenceError('output_too_large')
             return response.output_text
         finally:
             try:

@@ -1,0 +1,8 @@
+.eg-transcript-drop { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 18px; border: 2px dashed #a8c7e5; border-radius: 10px; background: #f3f8fe; text-align: center; color: #254d75; }
+.eg-transcript-drop--active { border-color: #176eb4; background: #e4f0fd; }
+.eg-transcript-drop small { color: #526881; }
+.eg-transcript-drop:focus-within { outline: 2px solid #176eb4; outline-offset: 3px; }
+.eg-transcript-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 12px; }
+.eg-transcript-list > li { border: 1px solid #d8e5f1; border-radius: 8px; padding: 14px; }
+.eg-transcript-list strong { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .eg-transcript-list .transcript-attachment-summary { flex-wrap: wrap; gap: 10px; } }

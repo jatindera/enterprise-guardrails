@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.agents.config import FoundrySettings
 from app.agents.enterprise_architecture.agent import create_agent
 from .hosted import invoke_hosted
+from .errors import EAInferenceError
 
 
 class EAExecutionSettings(BaseSettings):
@@ -19,9 +20,14 @@ async def _run_local(payload: str, settings: FoundrySettings) -> str:
     os.environ.setdefault('ENABLE_SENSITIVE_DATA', 'false')
     async with create_agent(settings) as agent:
         response = await asyncio.wait_for(agent.run(payload), settings.request_timeout_seconds)
+        reason = getattr(response, 'finish_reason', None)
+        reason = getattr(reason, 'value', reason)
+        if reason == 'length': raise EAInferenceError('output_limit')
+        if reason == 'content_filter': raise EAInferenceError('content_filter')
+        if getattr(response, 'continuation_token', None): raise EAInferenceError('incomplete')
         text = response.text
         if not text or not text.strip() or len(text) > 40000:
-            raise ValueError('Local EA response was empty or exceeded the output limit.')
+            raise EAInferenceError('empty_output' if not text or not text.strip() else 'output_too_large')
         return text
 
 

@@ -1,6 +1,7 @@
 # keep following at top of file to avoid circular imports
 from app.modules.meetings.router import router as meetings_router
 from app.modules.ea_preparation.router import router as ea_preparation_router
+from app.modules.ea_meeting_reviews.router import router as ea_meeting_reviews_router
 from app.modules.intake.router import router as intake_context_router
 from app.modules.production.router import router as production_router
 from app.modules.artifacts.router import router as artifacts_router
@@ -74,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.token_verifier = TokenVerifier(settings)
     application.include_router(meetings_router)
     application.include_router(ea_preparation_router)
+    application.include_router(ea_meeting_reviews_router)
     application.include_router(projects_router)
     application.include_router(arb_voting_router)
     application.include_router(gate_router)

@@ -1,0 +1,10 @@
+Fictional stakeholder meeting 1 — use only as test data.
+Architect: What is the business objective?
+Stakeholder: Reduce manual reconciliation time by providing a shared reporting application.
+Architect: What data will the solution use?
+Stakeholder: It will process customer contact details and sales records. The proposed retention period is 30 days.
+Architect: Who will own production support?
+Stakeholder: Support ownership is not confirmed. We must ask Operations before the next meeting.
+Stakeholder: We are comparing a SaaS option and an internally developed application. Neither has been selected.
+Architect: What is the recovery time objective?
+Stakeholder: The recovery time objective is not agreed yet.

@@ -5,6 +5,7 @@ import { useAuth } from "./auth/AuthGate";
 import { preparationAccess, canEditPreparationFocus } from "./auth/preparationAccess";
 import type { PreparationScope } from "./auth/preparationAccess";
 import MeetingReview from "./MeetingReview";
+import EAMeetingReview from "./EAMeetingReview";
 import type { AcceptedMeetingReview } from "./types";
 
 import type { ReviewerCorrection } from "./MeetingReview";
@@ -84,7 +85,6 @@ export default function ReviewSession({
   const roleCanPrepare = canEditPreparationFocus(access, preparationDomain) && (canEditOverride ?? true);
   const [phase, setPhase] = useState<MeetingPhase>("Prepare");
 
-  const meetingTitle = `${project.name} — stakeholder review`;
   const [focus, setFocus] = useState<ReviewFocus>(preparationDomain);
   const [captureMode] =
     useState<CaptureMode>("manual");
@@ -95,8 +95,8 @@ export default function ReviewSession({
     useState<DiscussionEntry[]>([]);
 
   const liveUnavailable = captureMode === "live";
-  const [transcript, setTranscript] =
-    useState<TranscriptAttachment | null>(null);
+  const [transcripts, setTranscripts] =
+    useState<TranscriptAttachment[]>([]);
 
   const [reviewerCorrections] =
     useState<ReviewerCorrection[]>([]);
@@ -324,7 +324,7 @@ export default function ReviewSession({
           <Button onClick={() => { void persistence.flush().catch(() => {}); }}>Retry save</Button>}
         {persistence.error && <Button onClick={persistence.reload}>Reload saved questions (discard local changes)</Button>}
       </div>
-      <fieldset disabled={!canPrepare} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <fieldset disabled={!canPrepare && phase !== "Review meeting"} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       {phase === "Prepare" && (!roleCanPrepare || (persistence.ready && !persistence.canEdit)) && (
         <MessageBar intent="info"><MessageBarBody>
           {preparationDomain} preparation is read-only for your role.
@@ -607,67 +607,25 @@ export default function ReviewSession({
         </div>
       )}
 
-      {phase === "Review meeting" && (
-        <section className="content-panel">
-          <div className="panel-heading">
-            <h2>Meeting record</h2>
-          </div>
-
-          <div className="workspace-panel-body">
-            <p className="session-body-text">
-              <strong>{meetingTitle}</strong>
-            </p>
-
-            <p className="session-body-text">
-              Captured answers: {entries.length}
-            </p>
-
-            {entries.length === 0 && (
-              <p className="workspace-secondary">
-                No answers captured yet. You can still attach
-                the meeting transcript below.
-              </p>
-            )}
-
-            {entries.map((entry) => (
-              <article
-                key={entry.id}
-                className="session-history-entry"
-              >
-                <strong>{entry.question}</strong>
-                <p>{entry.answer}</p>
-
-                <small>
-                  Source: {entry.speaker}
-                  {" · "}
-                  {captureModeLabel(entry.captureMode)}
-                </small>
-              </article>
-            ))}
-
-            <p className="workspace-secondary">
-              Captured answers are discussion notes, not verified
-              controls or formal approvals. Attach the meeting
-              transcript below to retain the original discussion.
-            </p>
-          </div>
-        </section>
-      )}
-
       {/* Keep mounted so attachments survive phase changes. */}
       <div hidden={phase !== "Review meeting"}>
+        {preparationDomain === "EA" ? <EAMeetingReview demandId={project.demandId} canEdit={canPrepare}
+          beforeGenerate={persistence.flush} onAcceptedReviewChange={onAcceptedReviewChange}/> : <fieldset disabled={!canPrepare} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
         <TranscriptUpload
-          onAttachmentChange={setTranscript}
+          attachments={transcripts}
+          onAttachmentChange={setTranscripts}
+          disabled={!canPrepare}
         />
 
         <MeetingReview
           projectName={project.name}
           entries={entries}
           corrections={reviewerCorrections}
-          transcript={transcript}
+          transcripts={transcripts}
           onAcceptedReviewChange={onAcceptedReviewChange}
           assessmentName={assessmentTab?.label ?? "assessment"}
         />
+        </fieldset>}
       </div>
 
       {/* Keep the host assessment mounted while switching phases. */}

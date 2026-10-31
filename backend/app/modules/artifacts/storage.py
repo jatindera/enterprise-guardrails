@@ -3,7 +3,7 @@ import hashlib
 import re
 from contextlib import contextmanager
 from fastapi import HTTPException, Request
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.identity import AzureCliCredential, ManagedIdentityCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
@@ -42,13 +42,21 @@ class AzureArtifactStore:
                 if props.size != len(data) or props.metadata.get("sha256") != digest:
                     raise HTTPException(409, "Upload identifier already contains different data.") from None
 
+    def delete(self, container, name):
+        """Delete the active blob; a retry after an already-completed delete is safe."""
+        with self.client() as client:
+            try:
+                client.get_blob_client(container, name).delete_blob(delete_snapshots="include", timeout=30)
+            except ResourceNotFoundError:
+                pass
+
     def get(self, container, name, size, digest):
         with self.client() as client:
             blob = client.get_blob_client(container, name)
             props = blob.get_blob_properties(timeout=30)
             if props.size != size:
                 raise HTTPException(503, "Stored file size does not match its record.")
-            data = blob.download_blob(length=size, timeout=30).readall()
+            data = blob.download_blob(offset=0, length=size, timeout=30).readall()
             if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
                 raise HTTPException(503, "Stored file integrity could not be verified.")
             return data

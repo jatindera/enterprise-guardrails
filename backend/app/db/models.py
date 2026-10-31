@@ -374,3 +374,56 @@ class MeetingPreparedQuestion(Base):
     selected: Mapped[bool] = mapped_column(nullable=False)
     asked_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
     asked_order: Mapped[int | None] = mapped_column(nullable=True)
+
+
+class EAReviewMeeting(Base):
+    __tablename__ = 'ea_review_meetings'
+    __table_args__ = (UniqueConstraint('project_id', 'number'),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey('projects.id'), nullable=False, index=True)
+    number: Mapped[int] = mapped_column(nullable=False)
+    title: Mapped[str] = mapped_column(Unicode(200), nullable=False)
+    state: Mapped[str] = mapped_column(Unicode(16), default='Open', nullable=False)
+    revision: Mapped[int] = mapped_column(default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)
+    created_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)
+    __mapper_args__ = {'version_id_col': revision}
+
+
+class EAMeetingTranscript(Base):
+    __tablename__ = 'ea_meeting_transcripts'
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    meeting_id: Mapped[UUID] = mapped_column(ForeignKey('ea_review_meetings.id'), nullable=False, index=True)
+    file_name: Mapped[str] = mapped_column(Unicode(260), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    sha256: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    storage_account: Mapped[str] = mapped_column(Unicode(24), nullable=False)
+    container: Mapped[str] = mapped_column(Unicode(63), nullable=False)
+    blob_name: Mapped[str] = mapped_column(Unicode(512), nullable=False)
+    status: Mapped[str] = mapped_column(Unicode(16), default='Pending', nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)
+    uploaded_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+
+
+class EAMeetingReview(Base):
+    __tablename__ = 'ea_meeting_reviews'
+    __table_args__ = (UniqueConstraint('meeting_id', 'version'),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    meeting_id: Mapped[UUID] = mapped_column(ForeignKey('ea_review_meetings.id'), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    basis_review_id: Mapped[UUID | None] = mapped_column(ForeignKey('ea_meeting_reviews.id'), nullable=True)
+    parent_review_id: Mapped[UUID | None] = mapped_column(ForeignKey('ea_meeting_reviews.id'), nullable=True)
+    input_digest: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    input_manifest: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+    ai_result: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    review_text: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    profile_version: Mapped[str] = mapped_column(Unicode(32), nullable=False)
+    execution_mode: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    agent_reference: Mapped[str] = mapped_column(Unicode(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)
+    created_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+    accepted_by: Mapped[str | None] = mapped_column(Unicode(128), nullable=True)
+    accepted_by_name: Mapped[str | None] = mapped_column(Unicode(200), nullable=True)

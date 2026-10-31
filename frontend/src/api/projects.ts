@@ -37,7 +37,7 @@ const baseUrl = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
 ).replace(/\/+$/, "");
 
-async function request<T>(
+export async function request<T>(
   path: string,
   options: RequestInit = {},
   responseKind: "json" | "blob" = "json",
@@ -61,6 +61,7 @@ async function request<T>(
       signal: controller.signal,
       headers,
     });
+    if (response.ok && response.status === 204) return undefined as T;
     if (response.ok && responseKind === "blob") return await response.blob() as T;
     const body = await response.json();
     if (!response.ok) {

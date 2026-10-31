@@ -18,7 +18,7 @@ const mockUpdate = vi.hoisted(() => vi.fn());
 vi.mock("./auth/AuthGate", () => ({ useAuth: () => ({roles:["Admin"]}) }));
 vi.mock("./ProjectUpdates", () => ({ useProjectUpdate: () => mockUpdate }));
 vi.mock("./TranscriptUpload", () => ({ default: ({onAttachmentChange}: {onAttachmentChange: (value: unknown) => void}) =>
-  <button onClick={() => onAttachmentChange({fileName: "meeting.txt", text: "The application reads customer data.", attachedAt: "2026-10-30T00:00:00Z"})}>Attach test transcript</button>
+  <button onClick={() => onAttachmentChange([{id: "test-transcript", sizeBytes: 100, fileName: "meeting.txt", text: "The application reads customer data.", attachedAt: "2026-10-30T00:00:00Z"}])}>Attach test transcript</button>
 }));
 vi.mock("./ProjectReviewers", () => ({ default: () => null }));
 vi.mock("./SecurityRecord", () => ({ default: () => <div>SecurityRecord</div> }));
@@ -83,23 +83,15 @@ describe("combined EA assessment", () => {
    expect((screen.getByLabelText("Diagram draft") as HTMLInputElement).value).toBe("Diagram state");
    expect((screen.getByLabelText("Approval draft") as HTMLInputElement).value).toBe("Approval state");
  });
- it("shares accepted meeting review with the EA panel and returns via Open review meeting", async () => {
+ it("shows the persistent EA review workspace and returns via Open review meeting", async () => {
    render(<ProjectWorkspace project={project} onBack={() => {}} onSaveRAIAssignment={async () => {}} />);
    goEA();
-   await waitFor(() => expect((screen.getByRole("button",{name:"Add my question"}) as HTMLButtonElement).disabled).toBe(false));
-   fireEvent.click(screen.getByRole("button",{name:"Add my question"}));
-   fireEvent.change(screen.getByLabelText("Question"),{target:{value:"What data moves?"}});
-   fireEvent.click(screen.getByRole("button",{name:"Select for meeting"}));
-   fireEvent.click(screen.getByRole("button",{name:"Start meeting"}));
-   fireEvent.click(await screen.findByRole("button",{name:"Use question"}));
    fireEvent.click(screen.getByRole("button",{name:"Review meeting"}));
-   fireEvent.click(screen.getByRole("button",{name:"Attach test transcript"}));
-   fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
-   fireEvent.click(screen.getByRole("button",{name:"Accept review draft"}));
+   expect(screen.getByRole("region",{name:"EA meeting review workspace"})).toBeTruthy();
+   expect(screen.queryByRole("heading",{name:"Meeting record"})).toBeNull();
    fireEvent.click(screen.getAllByRole("button",{name:"EA assessment"})[1]);
-   expect(screen.getByText("Accepted meeting review · Available")).toBeTruthy();
    fireEvent.click(screen.getByRole("button",{name:"Open review meeting"}));
-   expect(screen.getByRole("button",{name:"Accept review draft"})).toBeTruthy();
+   expect(screen.getByRole("heading",{name:"Meeting reviews"})).toBeTruthy();
  });
  it("makes the three meeting phases reusable without any assessment panel", () => {
    render(<ReviewSession project={project} onAcceptedReviewChange={() => {}} />);
@@ -115,7 +107,7 @@ describe("combined EA assessment", () => {
    fireEvent.click(screen.getByRole("button",{name:"Security assessment"}));
    expect(screen.getByText("Security assessment panel")).toBeTruthy();
    fireEvent.click(screen.getByRole("button",{name:"Return to meeting review"}));
-   expect(screen.getByRole("heading",{name:"Meeting record"})).toBeTruthy();
+   expect(screen.queryByRole("heading",{name:"Meeting record"})).toBeNull();
  });
 
 });
