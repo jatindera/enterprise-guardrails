@@ -1,0 +1,123 @@
+FICTIONAL TEST TRANSCRIPT — NOT A REAL MEETING OR APPROVAL
+Project: Agent 365 SDK POV
+Demand ID: 3845
+Meeting: EA discovery — scope, governance and technical feasibility
+Date: 2 November 2026 (fictional scenario)
+All participants, commitments, dates, requirements and decisions below are invented test data. They do not establish DuPont policy or verified Microsoft product capabilities. Proposed SDK capabilities must be validated during the POV.
+
+PARTICIPANTS
+Anika Mehra — Enterprise Architect and meeting facilitator
+Rohan Sethi — Business sponsor
+Priya Nair — Solution lead
+Kabir Malhotra — Security reviewer
+Leena Rao — Responsible AI reviewer
+Dev Khanna — Platform operations lead
+Maya Kapoor — External vendor representative
+
+[00:00] Anika Mehra (EA): We are discussing the Agent 365 SDK POV. The intake describes a need for consistent inventory, ownership, governance and monitoring across Microsoft and non-Microsoft agents. Today we need to establish what the POV will test. Statements in this meeting are proposed requirements or stakeholder answers, not evidence that a capability works or that the project is approved.
+
+[00:40] Rohan Sethi (Sponsor): Correct. We want evidence to support an adoption decision. We are not requesting production approval today, and we have not selected a final enterprise architecture.
+
+[01:10] QUESTION 1 — POV SCOPE
+Anika Mehra (EA): What is the specific scope of the POV: which agent types, hosting platforms, and use cases will be tested with the Agent 365 SDK?
+
+[01:25] Priya Nair (Solution lead): We propose three test cases. First, an internally developed Python agent running in an Azure-hosted container, using synthetic IT support requests. Second, an internally developed agent on a non-Microsoft cloud platform, using a synthetic procurement workflow. Third, a vendor-hosted agent that answers questions from a synthetic knowledge base. We want to test whether each can participate in the intended registration and monitoring model through a supported integration.
+
+[02:10] Maya Kapoor (Vendor): Our vendor-hosted test agent is available in a sandbox. I have not yet confirmed that our runtime supports the required SDK integration. Please record that as an open feasibility question, not as a confirmed supported scenario.
+
+[02:35] Priya Nair (Solution lead): We will exclude autonomous production changes, financial transactions, customer-facing interactions and real confidential or personal data. Native Microsoft agent behavior can be a comparison baseline, but it is not a fourth custom integration deliverable. The exact SDK version and the non-Microsoft cloud provider remain to be selected.
+
+[03:05] Anika Mehra (EA): The proposed scope is three test cases. Vendor compatibility, SDK version and the external hosting platform remain unconfirmed. No production deployment is included in this POV.
+
+[03:30] QUESTION 2 — SUCCESS CRITERIA
+Anika Mehra (EA): What success criteria will determine whether the Agent 365 SDK is viable for broader adoption?
+
+[03:45] Rohan Sethi (Sponsor): All three agreed test agents should have inventory records with identifiable business and technical owners. We should demonstrate registration, an ownership update and a supported decommissioning process. Every test case needs a documented outcome; a failed integration should be reported rather than hidden.
+
+[04:15] Kabir Malhotra (Security): I also want evidence from positive and negative authorization tests. An agent must not access a test resource outside its assigned permissions. We should demonstrate how an operator detects a failed authentication and how access can be revoked. These are proposed acceptance criteria, not a claim that the SDK itself supplies every control.
+
+[04:45] Dev Khanna (Operations): For the POV, we propose making a test event visible to operations within five minutes. We will measure additional response latency and operating cost, but we have not agreed acceptable thresholds for either. The test report must include the actual measured results and the missing thresholds.
+
+[05:15] Rohan Sethi (Sponsor): I will coordinate agreement on the latency and cost thresholds before test execution. We should not declare the POV successful while those criteria remain undefined.
+
+[05:40] QUESTION 3 — OWNERSHIP
+Anika Mehra (EA): Who will own registered agents, including accountability for lifecycle management, access reviews, risk remediation, and support?
+
+[05:55] Rohan Sethi (Sponsor): For the POV, I will be the accountable business owner. Priya will own the internal test implementations. Each agent record should identify both roles and an escalation contact. Ownership transfer and decommissioning need to be part of the test plan.
+
+[06:20] Priya Nair (Solution lead): I can own remediation of findings in our two internal implementations. The vendor must own fixes in its implementation. We still need named reviewers and a proposed frequency for access reviews; neither has been agreed.
+
+[06:45] Dev Khanna (Operations): My team can support the shared test monitoring components during business hours. We cannot yet accept end-to-end support responsibility for the vendor-hosted runtime. That boundary, including escalation and response expectations, needs agreement with Maya's team.
+
+[07:10] Maya Kapoor (Vendor): Agreed. I will provide a proposed support responsibility matrix. No production service-level commitment has been made.
+
+[07:30] QUESTION 4 — IDENTITY AND ACCESS
+Anika Mehra (EA): What identity, authentication, and authorization model is expected for agents integrated through the SDK?
+
+[07:45] Priya Nair (Solution lead): Our proposal is a separate workload identity for each test agent. For Azure-hosted components, we want to evaluate managed identity where supported. For external workloads, we want to investigate workload identity federation or another supported credential mechanism. We have not validated which options work with the SDK or the vendor runtime.
+
+[08:15] Kabir Malhotra (Security): Human access and agent workload access must be treated separately in the design. Use narrowly scoped test permissions, avoid a shared privileged identity, and record the required permission scopes. If a long-lived credential is unavoidable in the sandbox, bring the proposed storage, rotation and revocation approach for review. That is a design concern to resolve, not authorization to use a secret.
+
+[08:50] Maya Kapoor (Vendor): I need to check our federation support. Our current sandbox example uses an application credential, but I cannot confirm the recommended production authentication pattern today.
+
+[09:10] Anika Mehra (EA): Please provide an identity flow and a permission matrix. We must distinguish the desired identity model from capabilities actually demonstrated in the POV.
+
+[09:35] QUESTION 5 — DATA AND TELEMETRY
+Anika Mehra (EA): What data, telemetry, and audit information will be captured from integrated agents, and where will it be stored or monitored?
+
+[09:50] Priya Nair (Solution lead): We propose collecting an agent identifier, owner references, environment, correlation identifier, event time, authentication outcomes, operation status and error category. We do not plan to collect prompt or response bodies. Test telemetry would go to a dedicated monitoring workspace. Its location, access model and downstream export paths still need confirmation.
+
+[10:20] Dev Khanna (Operations): Our draft test configuration currently specifies 90 days of retention for that workspace. That was copied from an earlier template and has not been reviewed for this POV.
+
+[10:40] Kabir Malhotra (Security): My draft recommendation says 30 days for the test data. We therefore have conflicting retention values. Neither number should be described as an approved requirement. We need an agreed value and evidence that every relevant destination follows it.
+
+[11:05] Leena Rao (RAI): Even without prompt bodies, metadata may expose identities or sensitive context. Use synthetic identities and verify what the SDK, application and vendor actually emit. The vendor's own logging destinations and retention settings are also unknown.
+
+[11:30] Anika Mehra (EA): Retention is unresolved: the operations draft says 90 days and the security proposal says 30 days. Dev and Kabir will reconcile the proposal, and Maya will provide the vendor logging details. No final retention decision was made in this meeting.
+
+[11:55] QUESTION 6 — THIRD-PARTY AGENTS
+Anika Mehra (EA): How will third-party or externally hosted agents be assessed before registration into the Agent 365 ecosystem?
+
+[12:10] Maya Kapoor (Vendor): I can provide a sandbox data-flow diagram, hosting locations, authentication options, dependency information and our available security documentation. I cannot provide those artifacts during this call. Our deletion behavior and subprocessors also need confirmation from our security team.
+
+[12:40] Kabir Malhotra (Security): We need to review those artifacts and test the proposed permissions and data boundary before admitting the vendor agent into this POV environment. A registry entry alone does not prove security or authorize production use.
+
+[13:05] Leena Rao (RAI): We also need the intended behavior, human oversight, failure handling and any model-provider data flows. The use case is synthetic and limited, but that does not remove the need to document those questions. I am not assigning a risk classification or approving the vendor in this meeting.
+
+[13:30] QUESTION 7 — INTEGRATIONS
+Anika Mehra (EA): What integrations are required between Agent 365 SDK, existing security tools, ITSM processes, identity platforms, or monitoring systems?
+
+[13:45] Priya Nair (Solution lead): For this POV, we propose an identity integration, the supported registration path, and an export of selected operational events to the test monitoring workspace. We also want a manual process to link a failed test to an ITSM ticket. Automated ITSM integration is outside the current scope.
+
+[14:10] Dev Khanna (Operations): I initially expected automatic ticket creation, so that is a useful clarification. I accept a manual ticket link for the POV. We can evaluate automation as a later enhancement rather than a current deliverable.
+
+[14:30] Kabir Malhotra (Security): Please document endpoint destinations, network direction, required ports and transport protection. Do not assume private connectivity is supported for every route. We have not agreed a final network topology.
+
+[14:55] Anika Mehra (EA): The earlier expectation about automatic tickets is resolved for the POV: manual linking is in scope and automatic ticket creation is out of scope. Endpoint and connectivity evidence remain outstanding.
+
+[15:20] QUESTION 8 — TIMELINE AND DECISION PATH
+Anika Mehra (EA): What is the expected timeline and decision path from POV completion to potential production rollout?
+
+[15:35] Rohan Sethi (Sponsor): We propose four weeks for the POV after the test environments and access are ready. The intended sequence is scope and design confirmation, implementation, test execution, then a findings review. This is a planning estimate, not a committed production date.
+
+[16:00] Priya Nair (Solution lead): SDK compatibility and vendor documentation are dependencies for that estimate. If the external integration is unsupported, we will report the limitation and options instead of silently substituting another architecture.
+
+[16:25] Anika Mehra (EA): After the POV, the team should bring the measured results, architecture, data flows, identity and network details, cost observations and unresolved findings to the relevant human reviewers. Any production proposal will need its applicable reviews and approval path confirmed separately.
+
+[16:50] Rohan Sethi (Sponsor): Agreed. Completing the POV does not authorize rollout. We have not approved a production implementation, budget or launch date today.
+
+[17:10] ADDITIONAL QUESTION — RECOVERY AND EXIT
+Anika Mehra (EA): If an agent is compromised or the integration is discontinued, what is the recovery and exit approach?
+
+[17:25] Priya Nair (Solution lead): We should test disabling the workload's access, stopping the test runtime and removing its registration through supported procedures. We have not written or tested the sequence, and we do not yet know how quickly access revocation takes effect across all systems.
+
+[17:50] Dev Khanna (Operations): I will work with Priya on a draft runbook. Recovery targets, backup requirements and ownership of cleanup across vendor systems remain open.
+
+[18:10] CLOSING ACTIONS
+Anika Mehra (EA): I will summarize the commitments stated today. Priya will prepare the proposed architecture, identity flow, permission matrix and SDK compatibility checks. Rohan will coordinate measurable cost and latency criteria. Dev and Kabir will reconcile the conflicting retention proposals. Maya will provide vendor support, logging, hosting, authentication and security information. Dev and Priya will draft the recovery and exit runbook. We have not agreed due dates for these actions.
+
+[18:45] Leena Rao (RAI): Please preserve the distinction between a proposal, a stakeholder assertion and evidence from a completed test. The next discussion should examine the missing artifacts rather than treat this transcript as confirmation of implemented controls.
+
+[19:05] Anika Mehra (EA): Understood. This meeting records discovery findings and next steps only. No EA, Security, RAI or production approval has been granted. Meeting closed.
+
+END OF FICTIONAL TEST TRANSCRIPT

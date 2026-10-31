@@ -47,14 +47,14 @@ def accept(client,m,r):
     return client.post(f'{BASE}/{m["id"]}/reviews/{r["id"]}/accept',json={'expectedRevision':state(client,m)['revision']})
 
 
-def test_two_meetings_carry_forward_accepted_review_and_keep_history(client,database,setup):
+def test_two_meetings_use_attached_transcripts_only_and_keep_history(client,database,setup):
     store,calls=setup
     first=create(client); file=upload(client,first).json()
     assert '/ea/meetings/' in next(iter(store.blobs))[1]
     assert client.get(f'{BASE}/{first["id"]}/transcripts/{file["id"]}/download').content==b'Retention is 30 days.'
     uid=uuid4(); r=generate(client,first,uid); assert r.status_code==200,r.text
     review=r.json(); assert review['version']==1
-    assert calls[0]['previous_accepted_review'] is None
+    assert set(calls[0]) == {'task','project_context','transcripts'}
     assert generate(client,first,uid).json()==review and len(calls)==1
     edited=client.put(f'{BASE}/{first["id"]}/reviews/{uuid4()}/edit',json={'expectedRevision':state(client,first)['revision'],
         'parentReviewId':review['id'],'text':review['text']+'\nReviewer correction: confirm with Operations.'})
@@ -65,9 +65,9 @@ def test_two_meetings_carry_forward_accepted_review_and_keep_history(client,data
     second=create(client); assert second['number']==2
     assert upload(client,second,'Retention changes to 90 days.').status_code==200
     result=generate(client,second); assert result.status_code==200,result.text
-    assert result.json()['basisReviewId']==edit['id']
-    assert calls[-1]['previous_accepted_review']['id']==edit['id']
-    assert 'Reviewer correction' in json.dumps(calls[-1])
+    assert result.json()['basisReviewId'] is None
+    assert set(calls[-1]) == {'task','project_context','transcripts'}
+    assert 'Reviewer correction' not in json.dumps(calls[-1])
     assert accept(client,second,result.json()).status_code==200
     first_state=state(client,first)
     assert first_state['state']=='Accepted' and len(first_state['reviews'])==2
@@ -184,7 +184,7 @@ def test_new_meeting_is_idempotent_until_previous_is_accepted(client,database,se
     assert len(client.get(BASE).json()['meetings'])==1
 
 
-def test_questions_changed_during_inference_invalidate_result(client,database,setup):
+def test_questions_changed_during_inference_do_not_change_review_context(client,database,setup):
     _,calls=setup;m=create(client);upload(client,m)
     original=client.app.dependency_overrides[hosted_invoker]()
     def invoke(raw):
@@ -197,8 +197,10 @@ def test_questions_changed_during_inference_invalidate_result(client,database,se
         return result
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
     response=generate(client,m)
-    assert response.status_code==409,response.text
-    assert state(client,m)['reviews'][0]['status']=='Failed'
+    assert response.status_code==200,response.text
+    assert state(client,m)['reviews'][0]['status']=='Draft'
+    assert set(calls[-1]) == {'task','project_context','transcripts'}
+    assert 'New context?' not in json.dumps(calls[-1])
 
 
 def test_unprepared_question_can_be_extracted_with_transcript_evidence(client,database,setup):
@@ -311,3 +313,46 @@ def test_regeneration_excludes_deleted_wrong_transcript(client,database,setup):
     assert [f['file_name'] for f in calls[-1]['transcripts']]==['correct.txt']
     assert 'Wrong project information' not in json.dumps(calls[-1])
     assert accept(client,m,new.json()).status_code==200
+
+
+def test_all_current_attachments_are_sent_without_questions_or_prior_reviews(client,database,setup):
+    store,calls=setup; m=create(client)
+    upload(client,m,'Meeting one: scope is a pilot.',name='meeting-1.txt')
+    upload(client,m,'Meeting two: pilot includes two integrations.',name='meeting-2.txt')
+    response=generate(client,m)
+    assert response.status_code==200,response.text
+    request=calls[-1]
+    assert set(request)=={'task','project_context','transcripts'}
+    assert {t['file_name'] for t in request['transcripts']}=={'meeting-1.txt','meeting-2.txt'}
+    assert all(set(t)=={'id','file_name','lines'} for t in request['transcripts'])
+    assert set(request['project_context']) <= {'project_name','business_function',
+        'problem_statement','value_description','desired_business_outcome'}
+    with Session(database) as db:
+        review=db.get(EAMeetingReview,UUID(response.json()['id']))
+        manifest=json.loads(review.input_manifest)
+        assert set(manifest)=={'context_version','project_context','transcripts'}
+        assert review.basis_review_id is None
+
+
+def test_model_cannot_cite_previous_review_without_transcript_evidence(client,database,setup):
+    m=create(client);upload(client,m)
+    client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({
+        'summary':'Unsupported prior interpretation.','findings':[{
+            'kind':'requirement','text':'Unsupported prior interpretation.',
+            'citations':[{'kind':'review','id':str(uuid4()),'line':1,'quote':'Unsupported'}]}]})
+    response=generate(client,m)
+    assert response.status_code==502
+    assert state(client,m)['reviews'][0]['status']=='Failed'
+
+
+def test_old_context_draft_requires_regeneration_before_acceptance(client,database,setup):
+    m=create(client);upload(client,m);review=generate(client,m).json()
+    # Simulate a saved draft generated before the context-contract change.
+    with Session(database) as db, db.begin():
+        row=db.get(EAMeetingReview,UUID(review['id']))
+        row.input_digest='0'*64
+        row.input_manifest=json.dumps({'prepared_questions':[],'basis_review_id':None})
+    assert accept(client,m,review).status_code==409
+    regenerated=generate(client,m)
+    assert regenerated.status_code==200
+    assert accept(client,m,regenerated.json()).status_code==200

@@ -168,7 +168,7 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
       <section className="content-panel"><div className="panel-heading"><h2>AI meeting review</h2><Badge>{revision?.status ?? "Not generated"}</Badge></div>
         <div className="workspace-panel-body">
           <p>The AI drafts findings with source references. Reviewer edits are saved as new versions. Acceptance confirms the summary and does not approve the project.</p>
-          {meeting.number > 1 && <p className="workspace-secondary">Context: latest accepted review from the previous meeting plus this meeting’s saved transcripts.</p>}
+          <p className="workspace-secondary">Review context: minimal project intake and all Ready transcripts listed for this meeting. Previous AI reviews and prepared questions are not sent. Attach all meeting transcripts you want included.</p>
           <div className="ea-review-toolbar"><Button appearance="primary" disabled={!editable || local.length > 0 || dirty || !meeting.transcripts.some(f => f.status === "Ready") || meeting.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
             onClick={() => void run(generate)}>{latest ? "Regenerate review" : "Review meeting with AI"}</Button>
             {meeting.reviews.filter(r => r.text).length > 0 && <label>Review version <select aria-label="Review version" value={versionId} disabled={busy || dirty}

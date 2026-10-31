@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from azure.core.exceptions import AzureError
 from app.db.models import (Project, EAReviewMeeting, EAMeetingTranscript, EAMeetingReview,
-    MeetingPreparationRecord, MeetingPreparedQuestion, utc_now)
+    utc_now)
 from app.modules.projects.ea_access import ea_permissions
 from app.modules.meetings.router import find_project
 from app.modules.intake.service import get_context
@@ -268,18 +268,13 @@ def download(session, demand_id, meeting_id, file_id, user, store):
 def snapshot(session, project, meeting):
     files = list(session.scalars(select(EAMeetingTranscript).where(EAMeetingTranscript.meeting_id == meeting.id,
         EAMeetingTranscript.status == 'Ready').order_by(EAMeetingTranscript.uploaded_at, EAMeetingTranscript.id)))
-    basis = latest_accepted(session, project, meeting.number)
     ctx = EAProjectContext(demand_id=project.demand_id, project_name=project.name,
         business_function=project.business_function, intake=get_context(session, project.demand_id))
     context = json.loads(preparation_input(ctx, 'review'))['project_context']
-    questions = list(session.scalars(select(MeetingPreparedQuestion).join(MeetingPreparationRecord).where(
-        MeetingPreparationRecord.project_id == project.id, MeetingPreparationRecord.domain == 'EA',
-        MeetingPreparedQuestion.selected == True).order_by(MeetingPreparedQuestion.position)))
-    manifest = dict(project_context=context, basis_review_id=str(basis.id) if basis else None,
-        transcripts=[dict(id=str(f.id), file_name=f.file_name, sha256=f.sha256) for f in files],
-        prepared_questions=[dict(id=q.id, question=q.question) for q in questions])
+    manifest = dict(context_version='transcripts_only_v1', project_context=context,
+        transcripts=[dict(id=str(f.id), file_name=f.file_name, sha256=f.sha256) for f in files])
     encoded = json.dumps(manifest, sort_keys=True, ensure_ascii=False)
-    return manifest, hashlib.sha256(encoded.encode()).hexdigest(), basis, files
+    return manifest, hashlib.sha256(encoded.encode()).hexdigest(), files
 
 
 def numbered(text): return [{'line':i+1, 'text':line} for i,line in enumerate(text.splitlines())]
@@ -310,24 +305,23 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
         check_open(session, meeting, expected)
         if session.scalar(select(EAMeetingTranscript.id).where(EAMeetingTranscript.meeting_id == meeting.id, EAMeetingTranscript.status.in_(['Pending', 'Deleting']))):
             raise HTTPException(409, 'Finish pending uploads or retry transcript deletions before generating.')
-        manifest, digest, basis, files = snapshot(session, project, meeting)
+        manifest, digest, files = snapshot(session, project, meeting)
         if not files: raise HTTPException(422, 'Upload a transcript for this meeting first.')
         mode = EAExecutionSettings().execution_mode
         reference = 'local' if mode == 'local' else f'{HostedEASettings().agent_name}:{HostedEASettings().agent_version}'
         reviews=active_reviews(session, meeting)
         row=EAMeetingReview(id=review_id, meeting_id=meeting.id, version=max((r.version for r in reviews),default=0)+1,
-            status='Generating', basis_review_id=basis.id if basis else None, input_digest=digest,
+            status='Generating', basis_review_id=None, input_digest=digest,
             input_manifest=json.dumps(manifest,ensure_ascii=False), created_by=oid(user),
             profile_version=MEETING_REVIEW.version, execution_mode=mode, agent_reference=reference)
         session.add(row); touch(session,meeting)
         # Capture primitive metadata before releasing the DB connection.
         file_info=[(str(f.id),f.file_name,f.container,f.blob_name,f.size_bytes,f.sha256,f.storage_account) for f in files]
-        basis_info=(str(basis.id),basis.review_text) if basis else None
     stage='storage'; output_chars=0
     try:
         sources={}; labels={}; transcripts=[]
         budget=max(4000,min(ReviewSettings().max_input_chars,200000))
-        decoded_chars=len(basis_info[1]) if basis_info else 0
+        decoded_chars=0
         for fid,name,container,blob,size,digest,account in file_info:
             if account != store.account: raise HTTPException(503,'Storage account changed.')
             text=decode(store.get(container,blob,size,digest))
@@ -336,13 +330,9 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
                 raise HTTPException(422,'Transcript text exceeds APP_EA_REVIEW_MAX_INPUT_CHARS. Narrow the input or adjust the budget; no text was truncated.')
             sources[('transcript',fid)]=text.splitlines(); labels[('transcript',fid)]=name
             transcripts.append(dict(id=fid,file_name=name,lines=numbered(text)))
-        previous=None
-        if basis_info:
-            bid,text=basis_info; sources[('review',bid)]=text.splitlines(); labels[('review',bid)]='Previous accepted review'
-            previous=dict(id=bid,lines=numbered(text))
         stage='input'
         payload=json.dumps(dict(task=MEETING_REVIEW.instructions, project_context=manifest['project_context'],
-            prepared_questions=manifest['prepared_questions'], previous_accepted_review=previous, transcripts=transcripts),ensure_ascii=False)
+            transcripts=transcripts),ensure_ascii=False)
         if len(payload)>budget:
             raise HTTPException(422,'Review input exceeds its configured budget. Narrow the transcripts or increase APP_EA_REVIEW_MAX_INPUT_CHARS deliberately; no content was truncated.')
         stage='inference'
@@ -351,9 +341,8 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
         stage='json'
         result=ReviewResult.model_validate_json(unwrap_json(raw))
         stage='citations'; realigned=0
-        question_ids={q['id'] for q in manifest['prepared_questions']}
         for finding in result.findings:
-            if finding.prepared_question_id and finding.prepared_question_id not in question_ids: raise CitationError('unknown_question')
+            if finding.prepared_question_id is not None: raise CitationError('unknown_question')
             for cite in finding.citations:
                 realigned += int(align_citation(cite,sources))
         if realigned:
@@ -366,7 +355,7 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
             meeting=meeting_for(session,project,meeting_id)
             row=session.get(EAMeetingReview,review_id)
             if meeting.state!='Open' or row.status!='Generating': raise HTTPException(409,'Review request is no longer active.')
-            _,current_digest,_,_=snapshot(session,project,meeting)
+            _,current_digest,_=snapshot(session,project,meeting)
             if current_digest!=row.input_digest: raise HTTPException(409,'Inputs changed during generation. Generate again.')
             row.status='Draft'; row.ai_result=result.model_dump_json(); row.review_text=text
             touch(session,meeting)
@@ -435,7 +424,7 @@ def accept_review(session,demand_id,meeting_id,review_id,expected,user):
         if not successful or successful[-1].id!=review_id: raise HTTPException(409,'Only the latest saved draft can be accepted.')
         if session.scalar(select(EAMeetingTranscript.id).where(EAMeetingTranscript.meeting_id == meeting.id, EAMeetingTranscript.status.in_(['Pending', 'Deleting']))):
             raise HTTPException(409,'Finish pending uploads or retry transcript deletions before acceptance.')
-        _,digest,_,_=snapshot(session,project,meeting)
+        _,digest,_=snapshot(session,project,meeting)
         if digest!=row.input_digest: raise HTTPException(409,'Meeting evidence or project context changed. Regenerate before acceptance.')
         row.status='Accepted'; row.accepted_at=utc_now(); row.accepted_by=oid(user)
         row.accepted_by_name=str(user.get('name') or user.get('username') or 'Reviewer')[:200]
