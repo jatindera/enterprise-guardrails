@@ -410,11 +410,15 @@ export function generateEAQuestions(demandId: string, signal?: AbortSignal) {
   );
 }
 
+export interface EAWebSource { title: string; url: string }
+
 export function chatWithEA(demandId: string, message: string,
-  history: { role: "user" | "assistant"; text: string }[], signal?: AbortSignal) {
-  return request<{ text: string; proposedQuestion: EAQuestionDraft | null }>(
+  history: { role: "user" | "assistant"; text: string }[], signal?: AbortSignal,
+  web?: { searchWeb: true; publicSearchQuery: string }) {
+  return request<{ text: string; proposedQuestion: EAQuestionDraft | null;
+    sources?: EAWebSource[]; webSearched?: boolean; searchedAt?: string | null }>(
     `/api/projects/${encodeURIComponent(demandId)}/ea-preparation/chat`,
-    { method: "POST", body: JSON.stringify({ message, history }), signal }, "json", 240000,
+    { method: "POST", body: JSON.stringify({ message, history, ...web }), signal }, "json", 240000,
   );
 }
 

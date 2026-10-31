@@ -1,11 +1,13 @@
 import {
   Badge,
   Button,
+  Checkbox,
+  Input,
   Textarea,
 } from "@fluentui/react-components";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { chatWithEA } from "./api/projects";
+import { type EAWebSource, chatWithEA } from "./api/projects";
 import "./PreparationChat.css";
 
 import type { PreparationScope } from "./auth/preparationAccess";
@@ -20,6 +22,9 @@ export interface PreparationChatMessage {
   role: "user" | "assistant";
   text: string;
   proposedQuestion?: PreparedQuestion;
+  sources?: EAWebSource[];
+  webSearched?: boolean;
+  searchedAt?: string | null;
 }
 
 interface PreparationChatProps {
@@ -154,10 +159,13 @@ export default function PreparationChat({
   "Chat is held locally while the workspace remains open. Only questions you explicitly add enter the meeting question list.",
 }: PreparationChatProps) {
   const inputId = useId();
+  const searchInputId = useId();
+  const [searchWeb, setSearchWeb] = useState(false);
+  const [publicQuery, setPublicQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const active = useRef<AbortController | null>(null);
-  useEffect(() => { setBusy(false); setError(""); return () => active.current?.abort(); }, [project.demandId, scope, connected]);
+  useEffect(() => { setBusy(false); setError(""); setSearchWeb(false); setPublicQuery(""); return () => active.current?.abort(); }, [project.demandId, scope, connected]);
   const disabled = accessDisabled || busy;
 
   async function sendMessage() {
@@ -169,6 +177,11 @@ export default function PreparationChat({
 
     if (connected && (messages.length > 20 || messages.reduce((total, m) => total + m.text.length, prompt.length) > 12000)) {
       setError("This conversation has reached its limit. Clear chat to start a new conversation.");
+      return;
+    }
+
+    if (connected && searchWeb && !publicQuery.trim()) {
+      setError("Enter a public technical search query first.");
       return;
     }
 
@@ -185,9 +198,11 @@ export default function PreparationChat({
       setBusy(true); setError("");
       try {
         const result = await chatWithEA(project.demandId, prompt,
-          messages.map(({ role, text }) => ({ role, text })), controller.signal);
+          messages.map(({ role, text }) => ({ role, text })), controller.signal,
+          searchWeb ? { searchWeb: true, publicSearchQuery: publicQuery.trim() } : undefined);
         if (controller.signal.aborted) return;
         reply = { id: crypto.randomUUID(), role: "assistant", text: result.text,
+          sources: result.sources, webSearched: result.webSearched, searchedAt: result.searchedAt,
           proposedQuestion: result.proposedQuestion ? { ...result.proposedQuestion,
             id: crypto.randomUUID(), focus: "EA", selected: false, source: "ai" } : undefined };
       } catch (err) {
@@ -230,6 +245,19 @@ export default function PreparationChat({
               <div className={`eg-chat-bubble eg-chat-bubble--${message.role}`}>
                 <strong>{message.role === "user" ? "You" : connected ? "EA assistant" : "Assistant · sample reply"}</strong>
                 <p className="eg-chat-text">{message.text}</p>
+                {message.webSearched && (
+                  <div className="eg-chat-web-sources">
+                    <Badge appearance="tint">Web searched</Badge>
+                    {message.searchedAt && <span className="eg-chat-source-time"> {new Date(message.searchedAt).toLocaleString()}</span>}
+                    {message.sources?.length ? (
+                      <ol aria-label="Web sources">
+                        {message.sources.map((source) => /^https:\/\//i.test(source.url) && (
+                          <li key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a></li>
+                        ))}
+                      </ol>
+                    ) : <p>No citable web sources were returned. Findings remain unverified.</p>}
+                  </div>
+                )}
                 {proposedQuestion && (
                   <div className="eg-chat-proposal">
                     <Badge appearance="tint">{proposedQuestion.focus}</Badge>
@@ -251,7 +279,7 @@ export default function PreparationChat({
       {busy && (
         <div className="eg-chat-wait" role="status" aria-live="polite" aria-atomic="true">
           <span className="eg-chat-wait-spinner" aria-hidden="true" />
-          <span>Preparing a response</span>
+          <span>{searchWeb ? "Searching public sources and preparing a response" : "Preparing a response"}</span>
           <span className="eg-chat-wait-dots" aria-hidden="true"><span>·</span><span>·</span><span>·</span></span>
         </div>
       )}
@@ -262,9 +290,22 @@ export default function PreparationChat({
         <Textarea id={inputId} value={draft} rows={2} disabled={disabled} maxLength={8000}
           placeholder="Ask what to clarify or request a tailored question…"
           onChange={(_, data) => { if (!disabled) onDraftChange(data.value); }} />
+        {connected && scope === "EA" && (
+          <div className="eg-chat-web-options">
+            <Checkbox label="Search web" checked={searchWeb} disabled={disabled}
+              onChange={(_, data) => setSearchWeb(data.checked === true)} />
+            {searchWeb && <div className="eg-chat-public-query">
+              <label htmlFor={searchInputId}>Public technical search query</label>
+              <Input id={searchInputId} value={publicQuery} maxLength={240} disabled={disabled}
+                placeholder="Microsoft Agent 365 SDK published security advisories"
+                onChange={(_, data) => setPublicQuery(data.value)} />
+              <small>Only this query is sent to web search. Use public product/version terms; exclude company details, personal data and secrets. Search adds usage charges.</small>
+            </div>}
+          </div>
+        )}
         <div className="eg-chat-composer-actions">
           <span>{connected ? "AI suggestions · Verify before use" : "Sample replies · AI connection pending"}</span>
-          <Button appearance="primary" disabled={disabled || !draft.trim()} onClick={sendMessage}
+          <Button appearance="primary" disabled={disabled || !draft.trim() || (searchWeb && !publicQuery.trim())} onClick={sendMessage}
             icon={<span aria-hidden="true">➤</span>}>Send</Button>
         </div>
       </div>

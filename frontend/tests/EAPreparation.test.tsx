@@ -107,3 +107,31 @@ it("keeps the entire question list unchanged if regeneration fails", async () =>
   expect(change).not.toHaveBeenCalled();
   expect(screen.getByDisplayValue("Retain this draft?")).toBeTruthy();
 });
+
+it("sends only the separately entered public query as web options and renders source links", async () => {
+  mocks.chat.mockResolvedValue({text: "Published advisory [1].", proposedQuestion: null, webSearched: true,
+    sources: [{title: "Microsoft advisory", url: "https://msrc.microsoft.com/update-guide"}], searchedAt: "2026-10-31T09:00:00Z"});
+  const change = vi.fn();
+  const props = {project, connected: true, scope: "EA" as const, messages: [], draft: "Check this SDK", questions: [],
+    onMessagesChange: change, onDraftChange: vi.fn(), onAddQuestion: vi.fn()};
+  const view = render(<PreparationChat {...props} />);
+  fireEvent.click(screen.getByRole("checkbox", {name: "Search web"}));
+  expect((screen.getByRole("button", {name: "Send"}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Public technical search query"), {target: {value: "Microsoft Agent 365 SDK advisories"}});
+  fireEvent.click(screen.getByRole("button", {name: "Send"}));
+  await waitFor(() => expect(change).toHaveBeenCalled());
+  expect(mocks.chat.mock.calls[0][4]).toEqual({searchWeb: true, publicSearchQuery: "Microsoft Agent 365 SDK advisories"});
+  view.rerender(<PreparationChat {...props} messages={change.mock.calls[0][0]} draft="" />);
+  const link = screen.getByRole("link", {name: "Microsoft advisory"});
+  expect(link.getAttribute("href")).toBe("https://msrc.microsoft.com/update-guide");
+  expect(link.getAttribute("rel")).toContain("noopener");
+  expect(screen.getByText("Web searched")).toBeTruthy();
+});
+
+it("does not expose web search in demo or non-EA chat", () => {
+  const props = {project, messages: [], draft: "", questions: [], onMessagesChange: vi.fn(), onDraftChange: vi.fn(), onAddQuestion: vi.fn()};
+  const view = render(<PreparationChat {...props} scope="Security" />);
+  expect(screen.queryByRole("checkbox", {name: "Search web"})).toBeNull();
+  view.rerender(<PreparationChat {...props} scope="RAI" />);
+  expect(screen.queryByRole("checkbox", {name: "Search web"})).toBeNull();
+});
