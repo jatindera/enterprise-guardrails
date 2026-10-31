@@ -10,7 +10,7 @@ from app.agents.enterprise_architecture.profiles import PREPARE_QUESTIONS, PREPA
 from app.agents.enterprise_architecture.context import EAProjectContext, preparation_input
 from app.modules.intake.service import get_context
 from app.modules.projects.ea_access import ea_permissions
-from .hosted import invoke_hosted
+from .execution import invoke_ea
 from .schemas import ChatRequest, ChatReply, QuestionsReply
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def complete(context, task, response_type, invoke):
 
 
 def hosted_invoker():
-    return invoke_hosted
+    return invoke_ea
 
 
 @router.post('/{demand_id}/ea-preparation/questions', response_model=QuestionsReply)

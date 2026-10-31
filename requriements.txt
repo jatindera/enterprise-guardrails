@@ -1,11 +1,6 @@
 1. Learn from historical data/questions/human EA
-3. Ask AI if instructions need to be improved.
-4. Add web agent for the chat
-5. agent.py understand the purpose and if we need to implement anything. 
-# The hosted outer protocol owns its history; direct local runs are one-shot.
-        default_options={'store': False, 'max_tokens': settings.max_output_tokens},
-    
-6. ea_preparation/router.py questions() chat() do we need to improve task    
-7. are we using pydantic to validate json return.
-8. are we using the azure foundry agent, seems yes from local. question:
-could we run program without deploying to Azure and run agent on local.
+2. Add web agent for the chat
+3. Every deployment is creating a new version.
+
+RAI and Security agent
+local/azure deployment, same pattern as EA, Policies of DuPont in security and RAI docs?
