@@ -388,6 +388,11 @@ class EAReviewMeeting(Base):
     created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)
     created_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)
+    proposed_technologies: Mapped[str | None] = mapped_column(UnicodeText, nullable=True)
+    proposal_rationale: Mapped[str | None] = mapped_column(Unicode(4000), nullable=True)
+    proposal_updated_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+    proposal_updated_by: Mapped[str | None] = mapped_column(Unicode(128), nullable=True)
+    proposal_updated_by_name: Mapped[str | None] = mapped_column(Unicode(200), nullable=True)
     __mapper_args__ = {'version_id_col': revision}
 
 

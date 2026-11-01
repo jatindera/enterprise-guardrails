@@ -3,10 +3,10 @@ import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import EAMeetingReview from "../src/EAMeetingReview";
 import type {EAMeeting,EAReviewVersion} from "../src/api/eaReviews";
-const mocks=vi.hoisted(() => ({index:vi.fn(),get:vi.fn(),create:vi.fn(),upload:vi.fn(),generate:vi.fn(),edit:vi.fn(),accept:vi.fn(),remove:vi.fn(),download:vi.fn(),recover:vi.fn(),reopen:vi.fn()}));
+const mocks=vi.hoisted(() => ({index:vi.fn(),get:vi.fn(),create:vi.fn(),upload:vi.fn(),generate:vi.fn(),edit:vi.fn(),accept:vi.fn(),remove:vi.fn(),download:vi.fn(),recover:vi.fn(),reopen:vi.fn(),proposal:vi.fn()}));
 vi.mock("../src/api/eaReviews",()=>({getEAMeetings:mocks.index,getEAMeeting:mocks.get,createEAMeeting:mocks.create,
   uploadEATranscript:mocks.upload,generateEAReview:mocks.generate,editEAReview:mocks.edit,acceptEAReview:mocks.accept,
-  removeEATranscript:mocks.remove,downloadEATranscript:mocks.download,recoverEAReview:mocks.recover,reopenEAReview:mocks.reopen}));
+  removeEATranscript:mocks.remove,downloadEATranscript:mocks.download,recoverEAReview:mocks.recover,reopenEAReview:mocks.reopen,saveEAProposal:mocks.proposal}));
 const accepted:EAReviewVersion={id:"r1",version:1,status:"Accepted",text:"Accepted first meeting review: retention 30 days.",
   basisReviewId:null,parentReviewId:null,createdAt:"2026-10-31T10:00:00Z",createdBy:"EA",acceptedAt:"2026-10-31T10:00:00Z",acceptedBy:"EA",canRecover:false};
 let first:EAMeeting,second:EAMeeting;
@@ -19,6 +19,10 @@ beforeEach(()=>{
   mocks.get.mockImplementation(async(_d,id)=>structuredClone(id==="m1"?first:second));
   mocks.generate.mockImplementation(async()=>{const row={...accepted,id:"r2",status:"Draft",text:"Consolidated second review",basisReviewId:"r1",acceptedAt:null,acceptedBy:null};second.reviews.push(row as EAReviewVersion);second.revision++;return row;});
   mocks.edit.mockImplementation(async(_d,_m,_id,parent,text)=>{const row={...second.reviews.at(-1)!,id:"edit2",version:2,text,parentReviewId:parent};second.reviews.push(row);second.revision++;return row;});
+  mocks.proposal.mockImplementation(async(_d,_m,_revision,value)=>{
+    second.proposal={...value,updatedAt:"2026-11-01T10:00:00Z",updatedBy:"EA"};second.revision++;
+    return structuredClone(second);
+  });
   mocks.accept.mockImplementation(async()=>{const row=second.reviews.at(-1)!;row.status="Accepted";row.acceptedAt="2026-10-31T12:00:00Z";row.acceptedBy="EA";second.state="Accepted";second.canEdit=false;second.canAccept=false;second.canReopen=true;second.revision++;return row;});
 });
 afterEach(cleanup);
@@ -158,4 +162,42 @@ it("does not offer reopening to viewers",async()=>{
   second.state="Accepted";second.canEdit=false;second.canReopen=false;second.reviews=[accepted];
   show(vi.fn(),false);await screen.findByText("second.txt");
   expect(screen.queryByRole("button",{name:"Reopen accepted review"})).toBeNull();
+});
+
+
+it("batches proposal changes and restores the saved proposal after remount",async()=>{
+  const view=show();await screen.findByText("second.txt");
+  fireEvent.click(screen.getByRole("checkbox",{name:"Azure"}));
+  fireEvent.click(screen.getByRole("checkbox",{name:"Foundry"}));
+  fireEvent.change(screen.getByLabelText("Proposed technology stack rationale"),{target:{value:"Pilot proposal rationale"}});
+  expect(mocks.proposal).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button",{name:"Save proposal"}));
+  await screen.findByText("Proposed technology stack and rationale saved.");
+  expect(mocks.proposal).toHaveBeenCalledOnce();
+  expect(mocks.proposal.mock.calls[0][3].technologies).toEqual(["Azure","Foundry"]);
+  view.unmount();show();
+  await screen.findByDisplayValue("Pilot proposal rationale");
+  expect((screen.getByRole("checkbox",{name:"Azure"}) as HTMLInputElement).checked).toBe(true);
+});
+
+it("saves pending proposal before AI generation and uses the saved revision",async()=>{
+  show();await screen.findByText("second.txt");
+  fireEvent.click(screen.getByRole("checkbox",{name:"Databricks"}));
+  fireEvent.change(screen.getByLabelText("Proposed technology stack rationale"),{target:{value:"Data processing proposal"}});
+  fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
+  await screen.findByDisplayValue("Consolidated second review");
+  expect(mocks.proposal).toHaveBeenCalledOnce();
+  expect(mocks.generate.mock.calls[0][3]).toBe(3);
+  expect(mocks.proposal.mock.invocationCallOrder[0]).toBeLessThan(mocks.generate.mock.invocationCallOrder[0]);
+});
+
+it("does not invoke AI if proposal saving fails and retains the user's input",async()=>{
+  mocks.proposal.mockRejectedValueOnce(new Error("Proposal changed elsewhere. Refresh saved data."));
+  show();await screen.findByText("second.txt");
+  fireEvent.change(screen.getByLabelText("Proposed technology stack rationale"),{target:{value:"Keep my edits"}});
+  fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
+  await screen.findByRole("alert");
+  expect(mocks.generate).not.toHaveBeenCalled();
+  expect(screen.getByDisplayValue("Keep my edits")).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Discard proposal changes"})).toBeTruthy();
 });

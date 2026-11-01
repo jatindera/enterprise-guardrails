@@ -106,6 +106,12 @@ def meeting_view(row):
         revision=row.revision, createdAt=iso(row.created_at))
 
 
+def proposal_view(meeting):
+    return dict(technologies=json.loads(meeting.proposed_technologies or '[]'),
+        rationale=meeting.proposal_rationale or '',updatedAt=iso(meeting.proposal_updated_at),
+        updatedBy=meeting.proposal_updated_by_name)
+
+
 def detail(session, project, meeting, permissions):
     # Finish this result before the next statement (ODBC without MARS).
     files = list(session.scalars(select(EAMeetingTranscript).where(EAMeetingTranscript.meeting_id == meeting.id,
@@ -113,7 +119,7 @@ def detail(session, project, meeting, permissions):
     current = is_current(session, meeting)
     events = list(session.scalars(select(EAReviewReopenEvent).where(
         EAReviewReopenEvent.meeting_id == meeting.id).order_by(EAReviewReopenEvent.created_at, EAReviewReopenEvent.id)))
-    return dict(**meeting_view(meeting), isCurrent=current,
+    return dict(**meeting_view(meeting), proposal=proposal_view(meeting), isCurrent=current,
         canReopen=permissions[1] and current and meeting.state == 'Accepted',
         reopenHistory=[dict(id=str(e.id),reason=e.reason,createdAt=iso(e.created_at),
             createdBy=e.created_by_name,acceptedReviewId=str(e.accepted_review_id),
@@ -287,7 +293,8 @@ def snapshot(session, project, meeting):
     ctx = EAProjectContext(demand_id=project.demand_id, project_name=project.name,
         business_function=project.business_function, intake=get_context(session, project.demand_id))
     context = json.loads(preparation_input(ctx, 'review'))['project_context']
-    manifest = dict(context_version='transcripts_only_v1', project_context=context,
+    manifest = dict(context_version='proposal_and_transcripts_v1', project_context=context,
+        human_proposal=dict(technologies=proposal_view(meeting)['technologies'],rationale=meeting.proposal_rationale or ''),
         transcripts=[dict(id=str(f.id), file_name=f.file_name, sha256=f.sha256) for f in files])
     encoded = json.dumps(manifest, sort_keys=True, ensure_ascii=False)
     return manifest, hashlib.sha256(encoded.encode()).hexdigest(), files
@@ -299,6 +306,10 @@ def numbered(text): return [{'line':i+1, 'text':line} for i,line in enumerate(te
 def render(result, labels):
     chunks = ['Consolidated meeting review', result.summary,
         'Source excerpts are copied by the application. The EA reviewer must confirm that each cited line supports its finding.']
+    if result.technology_review:
+        chunks.extend(['Independent technology proposal review — '+result.technology_review.status,
+            result.technology_review.feedback,
+            'Advisory analysis only. The human EA retains the final technology and assessment decision.'])
     for f in result.findings:
         chunks.append(f.kind.replace('_',' ').title() + ': ' + f.text)
         if f.question: chunks.append('Question: '+f.question)
@@ -354,7 +365,7 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
             transcripts.append(dict(id=fid,file_name=name,lines=numbered(text)))
         stage='input'
         payload=json.dumps(dict(task=MEETING_REVIEW.instructions, project_context=manifest['project_context'],
-            transcripts=transcripts),ensure_ascii=False)
+            human_proposal=manifest['human_proposal'],transcripts=transcripts),ensure_ascii=False)
         if len(payload)>budget:
             raise HTTPException(422,'Review input exceeds its configured budget. Narrow the transcripts or increase APP_EA_REVIEW_MAX_INPUT_CHARS deliberately; no content was truncated.')
         stage='inference'
@@ -386,7 +397,7 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
             item['citations']=citations
             findings.append(item)
         result=ReviewResult.model_validate(dict(summary=referenced.summary,findings=findings,
-            follow_up_questions=referenced.follow_up_questions))
+            technology_review=referenced.technology_review,follow_up_questions=referenced.follow_up_questions))
         stage='render'
         text=render(result,labels)
         stage='save'
@@ -481,7 +492,7 @@ def accept_review(session,demand_id,meeting_id,review_id,expected,user):
         if session.scalar(select(EAMeetingTranscript.id).where(EAMeetingTranscript.meeting_id == meeting.id, EAMeetingTranscript.status.in_(['Pending', 'Deleting']))):
             raise HTTPException(409,'Finish pending uploads or retry transcript deletions before acceptance.')
         _,digest,_=snapshot(session,project,meeting)
-        if digest!=row.input_digest: raise HTTPException(409,'Meeting evidence or project context changed. Regenerate before acceptance.')
+        if digest!=row.input_digest: raise HTTPException(409,'Meeting evidence, proposal or project context changed. Regenerate before acceptance.')
         row.status='Accepted'; row.accepted_at=utc_now(); row.accepted_by=oid(user)
         row.accepted_by_name=str(user.get('name') or user.get('username') or 'Reviewer')[:200]
         meeting.state='Accepted'; touch(session,meeting)
@@ -529,4 +540,24 @@ def reopen_review(session,demand_id,meeting_id,request_id,data,user):
             accepted_review_id=accepted.id,draft_review_id=draft.id,reason=reason,
             created_by=oid(user),created_by_name=str(user.get('name') or user.get('username') or 'Reviewer')[:200]))
         meeting.state='Open';touch(session,meeting)
+        return detail(session,project,meeting,permissions)
+
+
+def save_proposal(session,demand_id,meeting_id,data,user):
+    with tx(session):
+        project,permissions=project_access(session,demand_id,user,edit=True,lock=True)
+        meeting=meeting_for(session,project,meeting_id)
+        # A repeated identical save is safe if its successful response was lost.
+        check_open(session,meeting)
+        current=proposal_view(meeting)
+        if current['technologies']==data.technologies and current['rationale']==data.rationale:
+            return detail(session,project,meeting,permissions)
+        if meeting.revision!=data.expected_revision:
+            raise HTTPException(409,'Proposal or review changed. Refresh saved data before saving again.')
+        meeting.proposed_technologies=json.dumps(data.technologies,ensure_ascii=False)
+        meeting.proposal_rationale=data.rationale
+        meeting.proposal_updated_at=utc_now()
+        meeting.proposal_updated_by=oid(user)
+        meeting.proposal_updated_by_name=str(user.get('name') or user.get('username') or 'Reviewer')[:200]
+        touch(session,meeting)
         return detail(session,project,meeting,permissions)

@@ -6,7 +6,9 @@ export interface EAReviewVersion {
 }
 export interface EASavedTranscript {id: string; fileName: string; sizeBytes: number; status: "Ready" | "Pending" | "Deleting" | "Removed" | "Cancelled"; uploadedAt: string}
 export interface EAMeetingSummary {id: string; number: number; title: string; state: "Open" | "Accepted"; revision: number; createdAt: string}
+export interface EAProposal {technologies: import("../types").EATechnology[]; rationale:string; updatedAt?:string|null; updatedBy?:string|null}
 export interface EAMeeting extends EAMeetingSummary {
+  proposal?: EAProposal;
   canEdit: boolean; canAccept: boolean; canReopen?: boolean; isCurrent?: boolean;
   reopenHistory?: {id:string;reason:string;createdAt:string;createdBy:string;acceptedReviewId:string;draftReviewId:string}[];
   transcripts: EASavedTranscript[]; reviews: EAReviewVersion[];
@@ -31,3 +33,7 @@ export const recoverEAReview = (d: string, m: string, id: string) => request(`${
 
 export const reopenEAReview = (d:string,m:string,id:string,revision:number,reason:string) => request<EAMeeting>(
   `${base(d)}/${m}/reopen/${id}`, {method:"PUT",body:JSON.stringify({expectedRevision:revision,reason})});
+
+export const saveEAProposal = (d:string,m:string,revision:number,proposal:EAProposal) => request<EAMeeting>(
+  `${base(d)}/${m}/proposal`, {method:"PUT",body:JSON.stringify({
+    expectedRevision:revision,technologies:proposal.technologies,rationale:proposal.rationale})});

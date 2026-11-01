@@ -14,6 +14,7 @@ from test_project_api import client,database,payload
 from test_gate_artifacts import Store
 
 BASE='/api/projects/3601/ea-review/meetings'
+TECH_REVIEW={'status':'Reviewed','feedback':'Advisory test analysis.'}
 
 @pytest.fixture
 def setup(client,database,monkeypatch):
@@ -25,7 +26,7 @@ def setup(client,database,monkeypatch):
         data=json.loads(raw); calls.append(data)
         source=data['transcripts'][0]
         line=source['lines'][0]
-        return json.dumps({'summary':'Stakeholder-reported requirements and open points.',
+        return json.dumps({'technology_review':TECH_REVIEW,'summary':'Stakeholder-reported requirements and open points.',
             'findings':[{'kind':'requirement','text':line['text'],'citations':[{'kind':'transcript',
                 'id':source['id'],'line':line['line']}]}], 'follow_up_questions':['Who confirms this requirement?']})
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
@@ -59,7 +60,7 @@ def test_reopened_workspace_uses_all_transcripts_and_keeps_accepted_history(clie
     assert client.get(f'{BASE}/{first["id"]}/transcripts/{file["id"]}/download').content==b'Retention is 30 days.'
     uid=uuid4(); r=generate(client,first,uid); assert r.status_code==200,r.text
     review=r.json(); assert review['version']==1
-    assert set(calls[0]) == {'task','project_context','transcripts'}
+    assert set(calls[0]) == {'task','project_context','human_proposal','transcripts'}
     assert generate(client,first,uid).json()==review and len(calls)==1
     edited=client.put(f'{BASE}/{first["id"]}/reviews/{uuid4()}/edit',json={'expectedRevision':state(client,first)['revision'],
         'parentReviewId':review['id'],'text':review['text']+'\nReviewer correction: confirm with Operations.'})
@@ -72,7 +73,7 @@ def test_reopened_workspace_uses_all_transcripts_and_keeps_accepted_history(clie
     assert upload(client,second,'Retention changes to 90 days.').status_code==200
     result=generate(client,second); assert result.status_code==200,result.text
     assert result.json()['basisReviewId'] is None
-    assert set(calls[-1]) == {'task','project_context','transcripts'}
+    assert set(calls[-1]) == {'task','project_context','human_proposal','transcripts'}
     assert 'Reviewer correction' not in json.dumps(calls[-1])
     assert accept(client,second,result.json()).status_code==200
     first_state=state(client,first)
@@ -118,7 +119,7 @@ def test_storage_failure_pending_retry_and_cancel(client,database,setup):
 
 def test_invalid_citations_fail_without_creating_accepted_review(client,database,setup):
     m=create(client);upload(client,m)
-    client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({'summary':'Unsupported',
+    client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({'technology_review':TECH_REVIEW,'summary':'Unsupported',
         'findings':[{'kind':'requirement','text':'Invented','citations':[{'kind':'transcript','id':str(uuid4()),'line':1}]}]})
     r=generate(client,m);assert r.status_code==502,r.text
     assert state(client,m)['reviews'][0]['status']=='Failed'
@@ -172,7 +173,7 @@ def test_migration_upgrade_downgrade_matches_models(database,monkeypatch):
         monkeypatch.setattr(migration,'op',Operations(MigrationContext.configure(connection)))
         migration.upgrade()
         for name in names:
-            assert {c['name'] for c in inspect(connection).get_columns(name)}==set(Base.metadata.tables[name].columns.keys())
+            assert {c['name'] for c in inspect(connection).get_columns(name)}==set(Base.metadata.tables[name].columns.keys()) - ({'proposed_technologies','proposal_rationale','proposal_updated_at','proposal_updated_by','proposal_updated_by_name'} if name=='ea_review_meetings' else set())
         migration.downgrade()
         assert not any(name in inspect(connection).get_table_names() for name in names)
         for name in reversed(names):Base.metadata.tables[name].create(connection)
@@ -207,7 +208,7 @@ def test_questions_changed_during_inference_do_not_change_review_context(client,
     response=generate(client,m)
     assert response.status_code==200,response.text
     assert state(client,m)['reviews'][0]['status']=='Draft'
-    assert set(calls[-1]) == {'task','project_context','transcripts'}
+    assert set(calls[-1]) == {'task','project_context','human_proposal','transcripts'}
     assert 'New context?' not in json.dumps(calls[-1])
 
 
@@ -215,7 +216,7 @@ def test_unprepared_question_can_be_extracted_with_transcript_evidence(client,da
     m=create(client);upload(client,m,'Who owns support? Operations owns support.')
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'summary':'Support ownership was discussed.','findings':[{'kind':'question_answer',
+        return json.dumps({'technology_review':TECH_REVIEW,'summary':'Support ownership was discussed.','findings':[{'kind':'question_answer',
             'text':'A question outside the prepared list was asked.','question':'Who owns support?',
             'answer':'Operations owns support.',
             'citations':[{'kind':'transcript','id':source['id'],'line':1}]}]})
@@ -330,7 +331,7 @@ def test_all_current_attachments_are_sent_without_questions_or_prior_reviews(cli
     response=generate(client,m)
     assert response.status_code==200,response.text
     request=calls[-1]
-    assert set(request)=={'task','project_context','transcripts'}
+    assert set(request)=={'task','project_context','human_proposal','transcripts'}
     assert {t['file_name'] for t in request['transcripts']}=={'meeting-1.txt','meeting-2.txt'}
     assert all(set(t)=={'id','file_name','lines'} for t in request['transcripts'])
     assert set(request['project_context']) <= {'project_name','business_function',
@@ -338,7 +339,7 @@ def test_all_current_attachments_are_sent_without_questions_or_prior_reviews(cli
     with Session(database) as db:
         review=db.get(EAMeetingReview,UUID(response.json()['id']))
         manifest=json.loads(review.input_manifest)
-        assert set(manifest)=={'context_version','project_context','transcripts'}
+        assert set(manifest)=={'context_version','project_context','human_proposal','transcripts'}
         assert review.basis_review_id is None
 
 
@@ -409,7 +410,7 @@ def test_citation_failure_shows_safe_source_location_without_quote(client,databa
     bad_quote='PRIVATE_MODEL_QUOTE_THAT_DOES_NOT_EXIST'
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'summary':'Unsupported statement.','findings':[{
+        return json.dumps({'technology_review':TECH_REVIEW,'summary':'Unsupported statement.','findings':[{
             'kind':'requirement','text':'Unsupported statement.',
             'citations':[{'kind':'transcript','id':str(uuid4()) if unknown_source else source['id'],
                 'line':999}]}]})
@@ -443,7 +444,7 @@ def test_short_exact_quote_still_saves_review(client,database,setup):
     m=create(client);upload(client,m,'Header\nPriya: We will use synthetic data for the pilot.')
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'summary':'The pilot uses synthetic data.','findings':[{
+        return json.dumps({'technology_review':TECH_REVIEW,'summary':'The pilot uses synthetic data.','findings':[{
             'kind':'requirement','text':'Use synthetic data for the pilot.',
             'citations':[{'kind':'transcript','id':source['id'],'line':2}]}]})
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
@@ -459,7 +460,7 @@ def test_backend_supplies_excerpt_from_long_original_line(client,database,setup)
     upload(client,m,'Header\n'+original,name='long-line.txt')
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'summary':'Recovery remains untested.','findings':[{
+        return json.dumps({'technology_review':TECH_REVIEW,'summary':'Recovery remains untested.','findings':[{
             'kind':'open_item','text':'Recovery procedures require testing.',
             'citations':[{'kind':'transcript','id':source['id'],'line':2}]}]})
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
@@ -470,7 +471,7 @@ def test_backend_supplies_excerpt_from_long_original_line(client,database,setup)
         row=db.get(EAMeetingReview,UUID(response.json()['id']))
         cite=json.loads(row.ai_result)['findings'][0]['citations'][0]
         assert cite['quote']==original[:240] and cite['excerpt_truncated']
-        assert row.profile_version=='1.2.0'
+        assert row.profile_version=='1.3.0'
     assert accept(client,m,response.json()).status_code==200
 
 

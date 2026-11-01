@@ -12,3 +12,25 @@
 .ea-review-feedback--success { color: #116234; background: #eaf7ee; border-color: #178047; }
 .ea-review-feedback--error { color: #a02020; background: #fff0f0; border-color: #b52b2b; }
 .ea-transcript-preview { max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.ea-review-proposal { border-left: 4px solid #2178b9; }
+.ea-review-proposal > .panel-heading { background: #edf5fd; }
+.ea-review-proposal-options {
+  border: 0;
+  padding: 0;
+  margin: 16px 0 20px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 20px;
+  align-items: start;
+}
+.ea-review-proposal-options legend { font-weight: 600; color: #234d6f; margin-bottom: 12px; }
+.ea-review-proposal-options .fui-Checkbox { align-self: start; align-items: flex-start; }
+.ea-review-proposal-options .fui-Checkbox__label { margin: 0; padding-block: 5px; line-height: 20px; }
+.ea-review-proposal-notice {
+  padding: 12px 16px;
+  border-left: 3px solid #b06b00;
+  background: #fff8e8;
+  color: #654100;
+}
