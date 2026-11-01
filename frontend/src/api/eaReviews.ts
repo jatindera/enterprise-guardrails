@@ -7,7 +7,9 @@ export interface EAReviewVersion {
 export interface EASavedTranscript {id: string; fileName: string; sizeBytes: number; status: "Ready" | "Pending" | "Deleting" | "Removed" | "Cancelled"; uploadedAt: string}
 export interface EAMeetingSummary {id: string; number: number; title: string; state: "Open" | "Accepted"; revision: number; createdAt: string}
 export interface EAMeeting extends EAMeetingSummary {
-  canEdit: boolean; canAccept: boolean; transcripts: EASavedTranscript[]; reviews: EAReviewVersion[];
+  canEdit: boolean; canAccept: boolean; canReopen?: boolean; isCurrent?: boolean;
+  reopenHistory?: {id:string;reason:string;createdAt:string;createdBy:string;acceptedReviewId:string;draftReviewId:string}[];
+  transcripts: EASavedTranscript[]; reviews: EAReviewVersion[];
 }
 export interface EAMeetingIndex {meetings: EAMeetingSummary[]; canEdit: boolean; latestAcceptedReview: EAReviewVersion | null}
 const base = (demand: string) => `/api/projects/${encodeURIComponent(demand)}/ea-review/meetings`;
@@ -26,3 +28,6 @@ export const editEAReview = (d: string, m: string, id: string, parent: string, t
 export const acceptEAReview = (d: string, m: string, id: string, revision: number) => request<EAReviewVersion>(
   `${base(d)}/${m}/reviews/${id}/accept`, {method: "POST", body: JSON.stringify({expectedRevision: revision})});
 export const recoverEAReview = (d: string, m: string, id: string) => request(`${base(d)}/${m}/reviews/${id}/recover`, {method: "POST"});
+
+export const reopenEAReview = (d:string,m:string,id:string,revision:number,reason:string) => request<EAMeeting>(
+  `${base(d)}/${m}/reopen/${id}`, {method:"PUT",body:JSON.stringify({expectedRevision:revision,reason})});

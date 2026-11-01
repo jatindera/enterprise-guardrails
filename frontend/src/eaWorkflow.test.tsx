@@ -91,7 +91,7 @@ describe("combined EA assessment", () => {
    expect(screen.queryByRole("heading",{name:"Meeting record"})).toBeNull();
    fireEvent.click(screen.getAllByRole("button",{name:"EA assessment"})[1]);
    fireEvent.click(screen.getByRole("button",{name:"Open review meeting"}));
-   expect(screen.getByRole("heading",{name:"Meeting reviews"})).toBeTruthy();
+   expect(screen.getByRole("heading",{name:"Meeting review workspace"})).toBeTruthy();
  });
  it("makes the three meeting phases reusable without any assessment panel", () => {
    render(<ReviewSession project={project} onAcceptedReviewChange={() => {}} />);

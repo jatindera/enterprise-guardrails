@@ -9,7 +9,7 @@ from app.db.session import get_session
 from app.modules.artifacts.storage import artifact_store
 from app.modules.ea_preparation.router import hosted_invoker
 from . import service as s
-from .schemas import CreateMeeting, Revision, EditReview
+from .schemas import CreateMeeting, Revision, EditReview, ReopenReview
 
 router=APIRouter(prefix='/api/projects/{demand_id}/ea-review',tags=['EA meeting reviews'])
 Demand=Annotated[str,Path(pattern=r'^[0-9]{1,64}$')]
@@ -69,3 +69,8 @@ def accept(demand_id:Demand,meeting_id:UUID,review_id:UUID,data:Revision,session
 def recover(demand_id:Demand,meeting_id:UUID,review_id:UUID,session:DB,user:User):
     s.recover(session,demand_id,meeting_id,review_id,user)
     return {'completed': True}
+
+
+@router.put('/meetings/{meeting_id}/reopen/{request_id}')
+def reopen(demand_id:Demand,meeting_id:UUID,request_id:UUID,data:ReopenReview,session:DB,user:User):
+    return s.reopen_review(session,demand_id,meeting_id,request_id,data,user)

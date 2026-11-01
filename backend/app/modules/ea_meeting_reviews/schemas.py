@@ -9,6 +9,10 @@ class CreateMeeting(APIModel):
 class Revision(APIModel):
     expected_revision: int = Field(ge=1, strict=True)
 
+class ReopenReview(Revision):
+    reason: str = Field(min_length=1, max_length=1000)
+
+
 class EditReview(Revision):
     parent_review_id: UUID
     text: str = Field(min_length=1, max_length=16000)

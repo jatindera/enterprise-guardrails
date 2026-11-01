@@ -427,3 +427,15 @@ class EAMeetingReview(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
     accepted_by: Mapped[str | None] = mapped_column(Unicode(128), nullable=True)
     accepted_by_name: Mapped[str | None] = mapped_column(Unicode(200), nullable=True)
+
+
+class EAReviewReopenEvent(Base):
+    __tablename__ = 'ea_review_reopen_events'
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    meeting_id: Mapped[UUID] = mapped_column(ForeignKey('ea_review_meetings.id'), nullable=False, index=True)
+    accepted_review_id: Mapped[UUID] = mapped_column(ForeignKey('ea_meeting_reviews.id'), nullable=False)
+    draft_review_id: Mapped[UUID] = mapped_column(ForeignKey('ea_meeting_reviews.id'), nullable=False)
+    reason: Mapped[str] = mapped_column(Unicode(1000), nullable=False)
+    created_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    created_by_name: Mapped[str] = mapped_column(Unicode(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)

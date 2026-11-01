@@ -3,10 +3,10 @@ import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import EAMeetingReview from "../src/EAMeetingReview";
 import type {EAMeeting,EAReviewVersion} from "../src/api/eaReviews";
-const mocks=vi.hoisted(() => ({index:vi.fn(),get:vi.fn(),create:vi.fn(),upload:vi.fn(),generate:vi.fn(),edit:vi.fn(),accept:vi.fn(),remove:vi.fn(),download:vi.fn(),recover:vi.fn()}));
+const mocks=vi.hoisted(() => ({index:vi.fn(),get:vi.fn(),create:vi.fn(),upload:vi.fn(),generate:vi.fn(),edit:vi.fn(),accept:vi.fn(),remove:vi.fn(),download:vi.fn(),recover:vi.fn(),reopen:vi.fn()}));
 vi.mock("../src/api/eaReviews",()=>({getEAMeetings:mocks.index,getEAMeeting:mocks.get,createEAMeeting:mocks.create,
   uploadEATranscript:mocks.upload,generateEAReview:mocks.generate,editEAReview:mocks.edit,acceptEAReview:mocks.accept,
-  removeEATranscript:mocks.remove,downloadEATranscript:mocks.download,recoverEAReview:mocks.recover}));
+  removeEATranscript:mocks.remove,downloadEATranscript:mocks.download,recoverEAReview:mocks.recover,reopenEAReview:mocks.reopen}));
 const accepted:EAReviewVersion={id:"r1",version:1,status:"Accepted",text:"Accepted first meeting review: retention 30 days.",
   basisReviewId:null,parentReviewId:null,createdAt:"2026-10-31T10:00:00Z",createdBy:"EA",acceptedAt:"2026-10-31T10:00:00Z",acceptedBy:"EA",canRecover:false};
 let first:EAMeeting,second:EAMeeting;
@@ -15,28 +15,28 @@ beforeEach(()=>{
   first={id:"m1",number:1,title:"Meeting 1",state:"Accepted",revision:4,createdAt:"2026-10-31T10:00:00Z",canEdit:false,canAccept:false,transcripts:[],reviews:[accepted]};
   second={id:"m2",number:2,title:"Meeting 2",state:"Open",revision:2,createdAt:"2026-10-31T11:00:00Z",canEdit:true,canAccept:true,
     transcripts:[{id:"f2",fileName:"second.txt",sizeBytes:100,status:"Ready",uploadedAt:"2026-10-31T11:00:00Z"}],reviews:[]};
-  mocks.index.mockImplementation(async()=>({meetings:[first,second],canEdit:true,latestAcceptedReview:second.state==="Accepted"?second.reviews.at(-1):accepted}));
+  mocks.index.mockImplementation(async()=>({meetings:[first,second],canEdit:true,latestAcceptedReview:second.state==="Accepted"?second.reviews.at(-1):null}));
   mocks.get.mockImplementation(async(_d,id)=>structuredClone(id==="m1"?first:second));
   mocks.generate.mockImplementation(async()=>{const row={...accepted,id:"r2",status:"Draft",text:"Consolidated second review",basisReviewId:"r1",acceptedAt:null,acceptedBy:null};second.reviews.push(row as EAReviewVersion);second.revision++;return row;});
   mocks.edit.mockImplementation(async(_d,_m,_id,parent,text)=>{const row={...second.reviews.at(-1)!,id:"edit2",version:2,text,parentReviewId:parent};second.reviews.push(row);second.revision++;return row;});
-  mocks.accept.mockImplementation(async()=>{const row=second.reviews.at(-1)!;row.status="Accepted";row.acceptedAt="2026-10-31T12:00:00Z";row.acceptedBy="EA";second.state="Accepted";second.canEdit=false;second.canAccept=false;second.revision++;return row;});
+  mocks.accept.mockImplementation(async()=>{const row=second.reviews.at(-1)!;row.status="Accepted";row.acceptedAt="2026-10-31T12:00:00Z";row.acceptedBy="EA";second.state="Accepted";second.canEdit=false;second.canAccept=false;second.canReopen=true;second.revision++;return row;});
 });
 afterEach(cleanup);
 function show(callback=vi.fn(),canEdit=true){return render(<EAMeetingReview demandId="3845" canEdit={canEdit} beforeGenerate={async()=>{}} onAcceptedReviewChange={callback}/>);}
 it("restores prior acceptance, saves edited versions, accepts the latest draft and preserves history",async()=>{
   const callback=vi.fn();const view=show(callback);
   await screen.findByText("second.txt");
-  expect(callback).toHaveBeenCalledWith({text:accepted.text,acceptedAt:accepted.acceptedAt});
+  expect(callback).toHaveBeenCalledWith(null);
   fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
   await screen.findByDisplayValue("Consolidated second review");
   fireEvent.change(screen.getByLabelText("Consolidated review"),{target:{value:"Reviewer-corrected consolidated review"}});
-  expect((screen.getByRole("button",{name:"Accept review draft"}) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button",{name:"Accept meeting review"}) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole("button",{name:"Save review changes"}));
   await screen.findByText("A new review version was saved.");
-  fireEvent.click(screen.getByRole("button",{name:"Accept review draft"}));
-  await screen.findByRole("button",{name:"Start next meeting"});
+  fireEvent.click(screen.getByRole("button",{name:"Accept meeting review"}));
+  await screen.findByRole("button",{name:"Reopen accepted review"});
   expect(callback).toHaveBeenCalledWith({text:"Reviewer-corrected consolidated review",acceptedAt:"2026-10-31T12:00:00Z"});
-  fireEvent.change(screen.getByLabelText("Meeting"),{target:{value:"m1"}});
+  fireEvent.change(screen.getByLabelText("Review workspace"),{target:{value:"m1"}});
   await screen.findByDisplayValue(accepted.text!);
   expect((screen.getByLabelText("Consolidated review") as HTMLTextAreaElement).disabled).toBe(true);
   view.unmount();show(callback);
@@ -122,4 +122,40 @@ it("keeps failed deletions visible, blocks review and offers a retry",async()=>{
   fireEvent.click(screen.getByRole("button",{name:"Retry deletion"}));
   await screen.findByText("Transcript deleted from storage and database. Regenerate any draft based on it.");
   expect(screen.queryByText("second.txt")).toBeNull();
+});
+
+it("reopens the accepted workspace with a reason and keeps its accepted version read-only",async()=>{
+  const callback=vi.fn();
+  const final={...accepted,id:"final",text:"Accepted current review"};
+  second.state="Accepted";second.canEdit=false;second.canAccept=false;second.canReopen=true;
+  second.isCurrent=true;second.reviews=[final];
+  mocks.reopen.mockImplementation(async(_d,id,_uid,_rev,reason)=>{
+    expect(id).toBe("m2");expect(reason).toBe("New stakeholder answers");
+    second.state="Open";second.canEdit=true;second.canAccept=true;second.canReopen=false;
+    second.reviews.push({...final,id:"reopened",version:2,status:"Draft",parentReviewId:"final",acceptedAt:null,acceptedBy:null});
+    second.reopenHistory=[{id:"event",reason,createdAt:"2026-11-01T10:00:00Z",createdBy:"EA",acceptedReviewId:"final",draftReviewId:"reopened"}];
+    return structuredClone(second);
+  });
+  show(callback);
+  await screen.findByDisplayValue("Accepted current review");
+  expect(screen.queryByRole("button",{name:"Start next meeting"})).toBeNull();
+  expect((screen.getByLabelText("Consolidated review") as HTMLTextAreaElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button",{name:"Reopen accepted review"}));
+  const submit=screen.getByRole("button",{name:"Reopen review"}) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Reason for reopening"),{target:{value:"New stakeholder answers"}});
+  fireEvent.click(submit);
+  await screen.findByText("Review reopened. Add transcripts here and regenerate; the accepted version remains in history.");
+  expect(mocks.reopen).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button",{name:"Browse files"})).toBeTruthy();
+  expect(callback).toHaveBeenLastCalledWith(null);
+  fireEvent.change(screen.getByLabelText("Review version"),{target:{value:"final"}});
+  expect((screen.getByLabelText("Consolidated review") as HTMLTextAreaElement).disabled).toBe(true);
+  expect(second.reviews[0].status).toBe("Accepted");
+});
+
+it("does not offer reopening to viewers",async()=>{
+  second.state="Accepted";second.canEdit=false;second.canReopen=false;second.reviews=[accepted];
+  show(vi.fn(),false);await screen.findByText("second.txt");
+  expect(screen.queryByRole("button",{name:"Reopen accepted review"})).toBeNull();
 });

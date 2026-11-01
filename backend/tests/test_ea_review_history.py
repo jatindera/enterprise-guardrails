@@ -47,7 +47,12 @@ def accept(client,m,r):
     return client.post(f'{BASE}/{m["id"]}/reviews/{r["id"]}/accept',json={'expectedRevision':state(client,m)['revision']})
 
 
-def test_two_meetings_use_attached_transcripts_only_and_keep_history(client,database,setup):
+def reopen(client,m,reason='New stakeholder information',uid=None,revision=None):
+    return client.put(f'{BASE}/{m["id"]}/reopen/{uid or uuid4()}',json={
+        'expectedRevision':state(client,m)['revision'] if revision is None else revision,'reason':reason})
+
+
+def test_reopened_workspace_uses_all_transcripts_and_keeps_accepted_history(client,database,setup):
     store,calls=setup
     first=create(client); file=upload(client,first).json()
     assert '/ea/meetings/' in next(iter(store.blobs))[1]
@@ -62,7 +67,8 @@ def test_two_meetings_use_attached_transcripts_only_and_keep_history(client,data
     edit=edited.json(); assert edit['version']==2 and edit['parentReviewId']==review['id']
     assert accept(client,first,edit).status_code==200
     assert upload(client,first,'Changed').status_code==409
-    second=create(client); assert second['number']==2
+    assert reopen(client,first).status_code==200
+    second=create(client); assert second['id']==first['id'] and second['number']==1
     assert upload(client,second,'Retention changes to 90 days.').status_code==200
     result=generate(client,second); assert result.status_code==200,result.text
     assert result.json()['basisReviewId'] is None
@@ -70,12 +76,12 @@ def test_two_meetings_use_attached_transcripts_only_and_keep_history(client,data
     assert 'Reviewer correction' not in json.dumps(calls[-1])
     assert accept(client,second,result.json()).status_code==200
     first_state=state(client,first)
-    assert first_state['state']=='Accepted' and len(first_state['reviews'])==2
+    assert first_state['state']=='Accepted' and len(first_state['reviews'])==4
     assert first_state['reviews'][0]['text']==review['text']
     assert client.get(BASE).json()['latestAcceptedReview']['id']==result.json()['id']
     with Session(database) as db:
-        assert len(list(db.scalars(select(EAReviewMeeting))))==2
-        assert len(list(db.scalars(select(EAMeetingReview))))==3
+        assert len(list(db.scalars(select(EAReviewMeeting))))==1
+        assert len(list(db.scalars(select(EAMeetingReview))))==4
         assert db.get(EAMeetingTranscript,UUID(file['id'])).sha256
 
 
@@ -159,6 +165,7 @@ def test_migration_upgrade_downgrade_matches_models(database,monkeypatch):
     from app.db.models import Base
     names=['ea_meeting_reviews','ea_meeting_transcripts','ea_review_meetings']
     with database.begin() as connection:
+        Base.metadata.tables['ea_review_reopen_events'].drop(connection)
         for name in names:Base.metadata.tables[name].drop(connection)
         spec=spec_from_file_location('ea_review_migration',Path(__file__).parents[1]/'migrations/versions/20261031_ea_meeting_reviews.py')
         migration=module_from_spec(spec);spec.loader.exec_module(migration)
@@ -169,6 +176,7 @@ def test_migration_upgrade_downgrade_matches_models(database,monkeypatch):
         migration.downgrade()
         assert not any(name in inspect(connection).get_table_names() for name in names)
         for name in reversed(names):Base.metadata.tables[name].create(connection)
+        Base.metadata.tables['ea_review_reopen_events'].create(connection)
 
 
 def test_pending_upload_blocks_acceptance_even_with_latest_revision(client,database,setup):
@@ -464,3 +472,97 @@ def test_backend_supplies_excerpt_from_long_original_line(client,database,setup)
         assert cite['quote']==original[:240] and cite['excerpt_truncated']
         assert row.profile_version=='1.2.0'
     assert accept(client,m,response.json()).status_code==200
+
+
+def test_single_workspace_reopen_reason_audit_and_stale_acceptance(client,database,setup):
+    from app.db.models import EAReviewReopenEvent
+    m=create(client);first=upload(client,m).json()
+    accepted=generate(client,m).json()
+    assert accept(client,m,accepted).status_code==200
+    before=state(client,m)
+    assert before['canReopen'] and not before['canEdit']
+    assert create(client)['id']==m['id']
+    uid=uuid4()
+    reopened=reopen(client,m,uid=uid)
+    assert reopened.status_code==200,reopened.text
+    result=reopened.json()
+    assert result['state']=='Open' and result['canEdit'] and not result['canReopen']
+    assert len(result['reviews'])==2
+    assert result['reviews'][0]['status']=='Accepted'
+    assert result['reviews'][1]['status']=='Draft'
+    assert result['reviews'][1]['parentReviewId']==accepted['id']
+    assert result['reopenHistory'][0]['reason']=='New stakeholder information'
+    # Lost response retries do not create another version/event, even with old revision.
+    assert reopen(client,m,uid=uid,revision=before['revision']).status_code==200
+    assert len(state(client,m)['reviews'])==2
+    assert accept(client,m,accepted).status_code==409
+    assert upload(client,m,'Follow-up stakeholder answer.',name='follow-up.txt').status_code==200
+    draft=state(client,m)['reviews'][-1]
+    assert accept(client,m,draft).status_code==409
+    regenerated=generate(client,m)
+    assert regenerated.status_code==200,regenerated.text
+    assert accept(client,m,regenerated.json()).status_code==200
+    with Session(database) as db:
+        assert len(list(db.scalars(select(EAReviewReopenEvent))))==1
+        old=db.get(EAMeetingReview,UUID(accepted['id']))
+        assert old.status=='Accepted' and old.review_text==accepted['text']
+        assert len(list(db.scalars(select(EAReviewMeeting))))==1
+
+
+def test_reopen_permissions_revision_and_blank_reason(client,database,setup):
+    m=create(client);upload(client,m);r=generate(client,m).json();assert accept(client,m,r).status_code==200
+    assert reopen(client,m,reason='   ').status_code==422
+    assert reopen(client,m,revision=0).status_code==422
+    assert reopen(client,m,revision=1).status_code==409
+    for roles,oid in [(['enterprise-architect'],HELPER),(['general-users'],PRIMARY)]:
+        client.app.dependency_overrides[current_user]=lambda roles=roles,oid=oid:{'roles':roles,'objectId':str(oid)}
+        assert reopen(client,m).status_code==403
+    client.app.dependency_overrides[current_user]=lambda:{'roles':['Admin'],'objectId':str(uuid4()),'name':'Admin'}
+    assert reopen(client,m).status_code==200
+
+
+def test_open_workspace_cannot_be_reopened(client,database,setup):
+    assert reopen(client,create(client)).status_code==409
+
+
+def test_reopen_migration_matches_model(database,monkeypatch):
+    from importlib.util import spec_from_file_location,module_from_spec
+    from pathlib import Path
+    from sqlalchemy import inspect
+    from alembic.operations import Operations
+    from alembic.migration import MigrationContext
+    from app.db.models import Base
+    name='ea_review_reopen_events'
+    with database.begin() as connection:
+        Base.metadata.tables[name].drop(connection)
+        spec=spec_from_file_location('reopen_migration',Path(__file__).parents[1]/'migrations/versions/20261101_ea_review_reopen.py')
+        migration=module_from_spec(spec);spec.loader.exec_module(migration)
+        monkeypatch.setattr(migration,'op',Operations(MigrationContext.configure(connection)))
+        migration.upgrade()
+        assert {c['name'] for c in inspect(connection).get_columns(name)}==set(Base.metadata.tables[name].columns.keys())
+        migration.downgrade()
+        assert name not in inspect(connection).get_table_names()
+        Base.metadata.tables[name].create(connection)
+
+
+def test_legacy_workspaces_remain_read_only(client,database,setup):
+    from app.db.models import Project
+    old=create(client);upload(client,old);review=generate(client,old).json()
+    assert accept(client,old,review).status_code==200
+    with Session(database) as db, db.begin():
+        project=db.scalar(select(Project))
+        current=EAReviewMeeting(project_id=project.id,number=2,title='Legacy second meeting',created_by=str(PRIMARY))
+        db.add(current);db.flush();current_id=str(current.id)
+    details=state(client,old)
+    assert details['isCurrent'] is False and not details['canReopen'] and not details['canEdit']
+    assert reopen(client,old).status_code==409
+    assert upload(client,old,'New content').status_code==409
+    assert create(client)['id']==current_id
+    assert client.get(BASE).json()['latestAcceptedReview'] is None
+
+
+def test_reopen_is_scoped_and_never_mutates_accepted_version(client,database,setup):
+    m=create(client);upload(client,m);r=generate(client,m).json();assert accept(client,m,r).status_code==200
+    assert client.put(f'/api/projects/99999/ea-review/meetings/{m["id"]}/reopen/{uuid4()}',
+        json={'expectedRevision':state(client,m)['revision'],'reason':'Wrong project'}).status_code==404
+    assert state(client,m)['state']=='Accepted'

@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from azure.core.exceptions import AzureError
 from app.db.models import (Project, EAReviewMeeting, EAMeetingTranscript, EAMeetingReview,
-    utc_now)
+    EAReviewReopenEvent, utc_now)
 from app.modules.projects.ea_access import ea_permissions
 from app.modules.meetings.router import find_project
 from app.modules.intake.service import get_context
@@ -67,8 +67,15 @@ def active_reviews(session, meeting):
     return list(session.scalars(select(EAMeetingReview).where(EAMeetingReview.meeting_id == meeting.id).order_by(EAMeetingReview.version)))
 
 
+def is_current(session, meeting):
+    latest = session.scalar(select(EAReviewMeeting.id).where(
+        EAReviewMeeting.project_id == meeting.project_id).order_by(EAReviewMeeting.number.desc()))
+    return latest == meeting.id
+
+
 def check_open(session, meeting, expected=None):
-    if meeting.state != 'Open': raise HTTPException(409, 'Accepted meetings are read-only. Start the next meeting.')
+    if not is_current(session, meeting): raise HTTPException(409, 'Historical review workspaces are read-only.')
+    if meeting.state != 'Open': raise HTTPException(409, 'Accepted reviews are read-only. Assigned EA or Admin must reopen the review.')
     if expected is not None and meeting.revision != expected: raise HTTPException(409, 'Meeting changed. Reload before continuing.')
     if any(r.status == 'Generating' for r in active_reviews(session, meeting)):
         raise HTTPException(409, 'A review is already generating. Refresh for its result or recover it after ten minutes.')
@@ -100,10 +107,19 @@ def meeting_view(row):
 
 
 def detail(session, project, meeting, permissions):
-    files = session.scalars(select(EAMeetingTranscript).where(EAMeetingTranscript.meeting_id == meeting.id,
-        EAMeetingTranscript.status.in_(['Ready', 'Pending', 'Deleting', 'Removed', 'Cancelled'])).order_by(EAMeetingTranscript.uploaded_at, EAMeetingTranscript.id))
-    return dict(**meeting_view(meeting), canEdit=permissions[0] and meeting.state == 'Open',
-        canAccept=permissions[1] and meeting.state == 'Open', transcripts=[transcript_view(f) for f in files],
+    # Finish this result before the next statement (ODBC without MARS).
+    files = list(session.scalars(select(EAMeetingTranscript).where(EAMeetingTranscript.meeting_id == meeting.id,
+        EAMeetingTranscript.status.in_(['Ready', 'Pending', 'Deleting', 'Removed', 'Cancelled'])).order_by(EAMeetingTranscript.uploaded_at, EAMeetingTranscript.id)))
+    current = is_current(session, meeting)
+    events = list(session.scalars(select(EAReviewReopenEvent).where(
+        EAReviewReopenEvent.meeting_id == meeting.id).order_by(EAReviewReopenEvent.created_at, EAReviewReopenEvent.id)))
+    return dict(**meeting_view(meeting), isCurrent=current,
+        canReopen=permissions[1] and current and meeting.state == 'Accepted',
+        reopenHistory=[dict(id=str(e.id),reason=e.reason,createdAt=iso(e.created_at),
+            createdBy=e.created_by_name,acceptedReviewId=str(e.accepted_review_id),
+            draftReviewId=str(e.draft_review_id)) for e in events],
+        canEdit=permissions[0] and current and meeting.state == 'Open',
+        canAccept=permissions[1] and current and meeting.state == 'Open', transcripts=[transcript_view(f) for f in files],
         reviews=[review_view(r) for r in active_reviews(session, meeting)])
 
 
@@ -117,7 +133,7 @@ def latest_accepted(session, project, before=None):
 def list_meetings(session, demand_id, user):
     project, permissions = project_access(session, demand_id, user)
     meetings = list(session.scalars(select(EAReviewMeeting).where(EAReviewMeeting.project_id == project.id).order_by(EAReviewMeeting.number)))
-    accepted = latest_accepted(session, project)
+    accepted = latest_accepted(session, project) if meetings and meetings[-1].state == 'Accepted' else None
     return dict(meetings=[meeting_view(m) for m in meetings], canEdit=permissions[0],
         latestAcceptedReview=review_view(accepted) if accepted else None)
 
@@ -127,10 +143,10 @@ def create_meeting(session, demand_id, user, title):
         project, permissions = project_access(session, demand_id, user, edit=True, lock=True)
         last = session.scalar(select(EAReviewMeeting).where(EAReviewMeeting.project_id == project.id).order_by(EAReviewMeeting.number.desc()))
         # Idempotent recovery when a create response is lost: never create two open rounds.
-        if last and last.state == 'Open': return detail(session, project, last, permissions)
+        if last: return detail(session, project, last, permissions)
         number = last.number + 1 if last else 1
         meeting = EAReviewMeeting(project_id=project.id, number=number,
-            title=title.strip() or f'Meeting {number}', created_by=oid(user))
+            title='EA meeting review', created_by=oid(user))
         session.add(meeting); session.flush()
         return detail(session, project, meeting, permissions)
 
@@ -438,7 +454,7 @@ def edit_review(session,demand_id,meeting_id,review_id,data,user):
         reviews=active_reviews(session,meeting)
         successful=[r for r in reviews if r.status in ['Draft','Accepted']]
         parent=successful[-1] if successful else None
-        if not parent or parent.id!=data.parent_review_id: raise HTTPException(409,'Edit the latest saved draft.')
+        if not parent or parent.status!='Draft' or parent.id!=data.parent_review_id: raise HTTPException(409,'Edit the latest saved draft.')
         if not data.text.strip(): raise HTTPException(422,'Review must not be blank.')
         row=EAMeetingReview(id=review_id,meeting_id=meeting.id,version=max(r.version for r in reviews)+1,status='Draft',
             basis_review_id=parent.basis_review_id,parent_review_id=parent.id,input_digest=parent.input_digest,input_manifest=parent.input_manifest,
@@ -454,7 +470,11 @@ def accept_review(session,demand_id,meeting_id,review_id,expected,user):
         meeting=meeting_for(session,project,meeting_id)
         row=session.get(EAMeetingReview,review_id)
         if not row or row.meeting_id!=meeting.id: raise HTTPException(404,'Review not found.')
-        if row.status=='Accepted': return review_view(row)
+        if row.status=='Accepted':
+            successful=[r for r in active_reviews(session,meeting) if r.status in ['Draft','Accepted']]
+            if is_current(session,meeting) and meeting.state=='Accepted' and successful[-1].id==row.id:
+                return review_view(row)
+            raise HTTPException(409,'This accepted version is historical. Accept the current draft instead.')
         check_open(session,meeting,expected)
         successful=[r for r in active_reviews(session,meeting) if r.status in ['Draft','Accepted']]
         if not successful or successful[-1].id!=review_id: raise HTTPException(409,'Only the latest saved draft can be accepted.')
@@ -476,3 +496,37 @@ def recover(session,demand_id,meeting_id,review_id,user):
         if not row or row.meeting_id!=meeting.id: raise HTTPException(404,'Review not found.')
         if not review_view(row)['canRecover']: raise HTTPException(409,'Only generating requests older than ten minutes can be recovered.')
         row.status='Failed'; touch(session,meeting)
+
+
+def reopen_review(session,demand_id,meeting_id,request_id,data,user):
+    reason=data.reason.strip()
+    if not reason: raise HTTPException(422,'Enter a reason for reopening.')
+    if len(reason.encode('utf-16-le'))//2>1000: raise HTTPException(422,'Reopen reason exceeds 1000 UTF-16 characters.')
+    with tx(session):
+        project,permissions=project_access(session,demand_id,user,accept=True,lock=True)
+        meeting=meeting_for(session,project,meeting_id)
+        prior=session.get(EAReviewReopenEvent,request_id)
+        if prior:
+            if prior.meeting_id!=meeting.id or prior.created_by!=oid(user) or prior.reason!=reason:
+                raise HTTPException(409,'Reopen request ID is already used.')
+            return detail(session,project,meeting,permissions)
+        if not is_current(session,meeting): raise HTTPException(409,'Historical review workspaces are read-only.')
+        if meeting.revision!=data.expected_revision: raise HTTPException(409,'Review changed. Refresh before reopening.')
+        if meeting.state!='Accepted': raise HTTPException(409,'Only an accepted review can be reopened.')
+        reviews=active_reviews(session,meeting)
+        if any(r.status=='Generating' for r in reviews): raise HTTPException(409,'A review is already generating.')
+        accepted=next((r for r in reversed(reviews) if r.status=='Accepted'),None)
+        if not accepted: raise HTTPException(409,'No accepted review is available to reopen.')
+        draft=EAMeetingReview(id=uuid4(),meeting_id=meeting.id,
+            version=max(r.version for r in reviews)+1,status='Draft',
+            parent_review_id=accepted.id,basis_review_id=accepted.basis_review_id,
+            input_digest=accepted.input_digest,input_manifest=accepted.input_manifest,
+            ai_result=accepted.ai_result,review_text=accepted.review_text,
+            profile_version=accepted.profile_version,execution_mode=accepted.execution_mode,
+            agent_reference=accepted.agent_reference,created_by=oid(user))
+        session.add(draft);session.flush()
+        session.add(EAReviewReopenEvent(id=request_id,meeting_id=meeting.id,
+            accepted_review_id=accepted.id,draft_review_id=draft.id,reason=reason,
+            created_by=oid(user),created_by_name=str(user.get('name') or user.get('username') or 'Reviewer')[:200]))
+        meeting.state='Open';touch(session,meeting)
+        return detail(session,project,meeting,permissions)

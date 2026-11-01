@@ -22,6 +22,9 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<{name:string;text:string} | null>(null);
+  const [reopenReason, setReopenReason] = useState("");
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const reopenId = useRef<string | null>(null);
   const active = useRef(true);
   const currentDemand = useRef(demandId); currentDemand.current = demandId;
   const callback = useRef(onAcceptedReviewChange); callback.current = onAcceptedReviewChange;
@@ -119,7 +122,15 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
   async function accept() {
     if (!meeting || !revision) return;
     await api.acceptEAReview(demandId,meeting.id,revision.id,meeting.revision);
-    await refresh(); setNotice("Review accepted. You can start the next meeting.");
+    await refresh(); setNotice("Meeting review accepted. Assigned EA or Admin can reopen it when new information is available.");
+  }
+  async function reopen() {
+    if (!meeting || !reopenReason.trim()) return;
+    reopenId.current ??= crypto.randomUUID();
+    await api.reopenEAReview(demandId,meeting.id,reopenId.current,meeting.revision,reopenReason.trim());
+    await refresh();
+    setReopenOpen(false); setReopenReason(""); reopenId.current=null;
+    setNotice("Review reopened. Add transcripts here and regenerate; the accepted version remains in history.");
   }
   async function viewFile(id:string,name:string,download=false) {
     if (!meeting) return;
@@ -136,14 +147,14 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
   function selectReview(row: EAReviewVersion) {setVersionId(row.id); setText(row.text ?? "");}
 
   return <section className="ea-persistent-review" aria-label="EA meeting review workspace">
-    <div className="content-panel"><div className="panel-heading"><h2>Meeting reviews</h2><Badge appearance="tint">Saved review history</Badge></div>
+    <div className="content-panel"><div className="panel-heading"><h2>Meeting review workspace</h2><Badge appearance="tint">Saved review history</Badge></div>
       <div className="workspace-panel-body">
-        <p>Each meeting keeps its own transcripts and review versions. The next meeting carries forward the latest accepted consolidated review.</p>
+        <p>Add transcripts from each stakeholder meeting to this workspace, then regenerate the review. Continue until the information is sufficient and you are ready to accept the summary.</p>
         <div className="ea-review-toolbar">
-          {index?.meetings.length ? <label>Meeting <select aria-label="Meeting" value={selected} disabled={busy || dirty || local.length > 0}
-            onChange={e => setSelected(e.target.value)}>{index.meetings.map(m => <option key={m.id} value={m.id}>{m.title} · {m.state}</option>)}</select></label> : <span>No saved meetings yet.</span>}
-          {canEdit && index?.canEdit && (!index.meetings.length || index.meetings.at(-1)?.state === "Accepted") &&
-            <Button appearance="primary" disabled={busy || dirty || local.length > 0} onClick={() => void run(start)}>{index.meetings.length ? "Start next meeting" : "Create first meeting"}</Button>}
+          {index && index.meetings.length > 1 ? <label>Review workspace <select aria-label="Review workspace" value={selected} disabled={busy || dirty || local.length > 0}
+            onChange={e => setSelected(e.target.value)}>{index.meetings.map(m => <option key={m.id} value={m.id}>{m.id === index.meetings.at(-1)?.id ? "Current workspace" : m.title + " (historical)"} · {m.state}</option>)}</select></label> : !index?.meetings.length ? <span>No review workspace yet.</span> : null}
+          {canEdit && index?.canEdit && !index.meetings.length &&
+            <Button appearance="primary" disabled={busy || dirty || local.length > 0} onClick={() => void run(start)}>Start review</Button>}
           <Button disabled={busy || dirty || local.length > 0} onClick={() => void run(refresh)}>Refresh saved data</Button>
         </div>
         {(dirty || local.length > 0) && <p className="workspace-secondary">Save or discard your local changes before switching meetings or refreshing saved data.</p>}
@@ -151,9 +162,9 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
       </div>
     </div>
     {meeting && <>
-      <section className="content-panel"><div className="panel-heading"><h2>{meeting.title} transcripts</h2><Badge color={meeting.state === "Accepted" ? "success" : "informative"}>{meeting.state}</Badge></div>
+      <section className="content-panel"><div className="panel-heading"><h2>Meeting transcripts</h2><Badge color={meeting.state === "Accepted" ? "success" : "informative"}>{meeting.state}</Badge></div>
         <div className="workspace-panel-body">
-          {meeting.transcripts.length === 0 && <p>No saved transcripts for this meeting.</p>}
+          {meeting.transcripts.length === 0 && <p>No saved transcripts. Add one or more meeting transcripts to begin.</p>}
           <ul className="ea-review-files">{meeting.transcripts.map(file => <li key={file.id}><span><strong>{file.fileName}</strong> · {["Removed", "Cancelled", "Deleting"].includes(file.status) ? file.status + " — excluded from AI" : file.status} · {(file.sizeBytes/1024).toFixed(1)} KB</span>
             <div>{file.status === "Ready" && <><Button disabled={busy} onClick={() => void run(() => viewFile(file.id,file.fileName), "Loading transcript preview…")}>Preview</Button><Button disabled={busy} onClick={() => void run(() => viewFile(file.id,file.fileName,true), "Downloading transcript…")}>Download</Button></>}
               <Button disabled={!editable || dirty} onClick={() => void run(async () => {
@@ -161,6 +172,9 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
                 catch (error) { try { await refresh(); } catch { /* Keep the original deletion error. */ } throw error; }
                 await refresh(); setNotice("Transcript deleted from storage and database. Regenerate any draft based on it.");
               }, "Deleting transcript…")}>{file.status === "Deleting" ? "Retry deletion" : file.status === "Pending" ? "Cancel pending upload" : "Delete file"}</Button></div></li>)}</ul>
+          {meeting.isCurrent === false && <p className="workspace-secondary">Historical workspace — read-only. Continue in the current workspace.</p>}
+          {meeting.state === "Accepted" && <p>This review is accepted and read-only. Reopen it to add transcripts or revise the draft.</p>}
+          {canEdit && meeting.canReopen && <Button disabled={busy || dirty} onClick={() => {setReopenOpen(true);setReopenReason("");reopenId.current=null;}}>Reopen accepted review</Button>}
           {meeting.state === "Open" && <><TranscriptUpload staged attachments={local} onAttachmentChange={setLocal} disabled={!editable || dirty}/>
             <Button appearance="primary" disabled={!editable || dirty || !local.length} onClick={() => void run(upload, "Saving transcripts…")}>Save transcripts</Button></>}
         </div>
@@ -168,7 +182,7 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
       <section className="content-panel"><div className="panel-heading"><h2>AI meeting review</h2><Badge>{revision?.status ?? "Not generated"}</Badge></div>
         <div className="workspace-panel-body">
           <p>The AI drafts findings with source references. Reviewer edits are saved as new versions. Acceptance confirms the summary and does not approve the project.</p>
-          <p className="workspace-secondary">Review context: minimal project intake and all Ready transcripts listed for this meeting. Previous AI reviews and prepared questions are not sent. Attach all meeting transcripts you want included.</p>
+          <p className="workspace-secondary">Review context: minimal project intake and all Ready transcripts listed in this workspace. Previous AI reviews and prepared questions are not sent. Attach all meeting transcripts you want included.</p>
           <div className="ea-review-toolbar"><Button appearance="primary" disabled={!editable || local.length > 0 || dirty || !meeting.transcripts.some(f => f.status === "Ready") || meeting.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
             onClick={() => void run(generate)}>{latest ? "Regenerate review" : "Review meeting with AI"}</Button>
             {meeting.reviews.filter(r => r.text).length > 0 && <label>Review version <select aria-label="Review version" value={versionId} disabled={busy || dirty}
@@ -176,19 +190,34 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
                 {meeting.reviews.filter(r => r.text).map(r => <option key={r.id} value={r.id}>Version {r.version} · {r.status}</option>)}</select></label>}
           </div>
           {revision?.text && <><label className="session-field">Consolidated review<Textarea aria-label="Consolidated review" rows={18} resize="vertical" maxLength={16000}
-            disabled={!editable || !latestSelected} value={text} onChange={(_,data) => setText(data.value)}/></label>
-            <div className="ea-review-toolbar"><Button disabled={!editable || !latestSelected || !dirty || !text.trim()} onClick={() => void run(saveEdit)}>Save review changes</Button>
+            disabled={!editable || !latestSelected || revision.status !== "Draft"} value={text} onChange={(_,data) => setText(data.value)}/></label>
+            <div className="ea-review-toolbar"><Button disabled={!editable || !latestSelected || revision.status !== "Draft" || !dirty || !text.trim()} onClick={() => void run(saveEdit)}>Save review changes</Button>
               {dirty && <Button disabled={busy} onClick={() => setText(revision.text ?? "")}>Discard edits</Button>}
               <Button appearance="primary" disabled={!editable || !meeting.canAccept || !latestSelected || dirty || local.length > 0 || meeting.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
-                onClick={() => void run(accept)}>Accept review draft</Button></div>
+                onClick={() => void run(accept)}>Accept meeting review</Button></div>
             {revision.acceptedAt && <p>Accepted by {revision.acceptedBy} · {new Date(revision.acceptedAt).toLocaleString()}</p>}
             {revision.basisReviewId && <p className="workspace-secondary">Based on the previous accepted review. Select an earlier meeting to inspect its history.</p>}
           </>}
+          {!!meeting.reopenHistory?.length && <details><summary>Reopen history</summary><ul>{meeting.reopenHistory.map(event => <li key={event.id}>
+            {event.createdBy} · {new Date(event.createdAt).toLocaleString()} — {event.reason}
+          </li>)}</ul></details>}
           {meeting.reviews.some(r => r.status === "Failed") && <p className="workspace-secondary">Previous failed attempts are retained in history. Correct the issue and generate a new version.</p>}
           {meeting.reviews.filter(r => r.canRecover).map(r => <Button key={r.id} disabled={busy || !canEdit} onClick={() => void run(async () => {await api.recoverEAReview(demandId,meeting.id,r.id); await refresh();})}>Recover interrupted review request</Button>)}
         </div>
       </section>
     </>}
+    <Dialog open={reopenOpen} onOpenChange={(_,data) => {if (!busy) setReopenOpen(data.open);}}>
+      <DialogSurface><DialogBody><DialogTitle>Reopen accepted review</DialogTitle>
+        <DialogContent><p>The accepted version remains in history. Reopening creates a new draft in this workspace.</p>
+          {error && <p role="alert">{error}</p>}
+          <label className="session-field">Reason for reopening<Textarea aria-label="Reason for reopening" value={reopenReason} maxLength={1000}
+            disabled={busy} onChange={(_,data) => {setReopenReason(data.value);reopenId.current=null;}}/></label>
+        </DialogContent><DialogActions>
+          <Button disabled={busy} onClick={() => setReopenOpen(false)}>Cancel</Button>
+          <Button appearance="primary" disabled={busy || !reopenReason.trim()} onClick={() => void run(reopen,"Reopening review…")}>Reopen review</Button>
+        </DialogActions>
+      </DialogBody></DialogSurface>
+    </Dialog>
     <Dialog open={preview !== null} onOpenChange={(_, data) => {if (!data.open) setPreview(null);}}>
       <DialogSurface><DialogBody>
         <DialogTitle>{preview?.name ?? "Transcript preview"}</DialogTitle>
