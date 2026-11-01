@@ -11,7 +11,7 @@ from .errors import EAInferenceError
 
 class EAExecutionSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_prefix='APP_EA_', extra='ignore')
-    execution_mode: Literal['local', 'hosted'] = 'hosted'
+    execution_mode: Literal['local', 'hosted', 'ollama'] = 'hosted'
 
 
 async def _run_local(payload: str, settings: FoundrySettings) -> str:
@@ -38,6 +38,10 @@ def invoke_local(payload: str) -> str:
 
 
 def invoke_ea(payload: str) -> str:
-    if EAExecutionSettings().execution_mode == 'local':
+    mode = EAExecutionSettings().execution_mode
+    if mode == 'local':
         return invoke_local(payload)
+    if mode == 'ollama':
+        from app.agents.ollama import invoke_ollama
+        return invoke_ollama(payload)
     return invoke_hosted(payload)

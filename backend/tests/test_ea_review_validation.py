@@ -37,3 +37,49 @@ def test_unknown_source_remains_rejected():
 def test_json_fences_are_unwrapped_without_extracting_partial_prose():
     assert unwrap_json('```JSON\r\n{"summary":"ok"}\r\n```')=='{"summary":"ok"}'
     assert unwrap_json('Here is {"summary":"ok"}')=='Here is {"summary":"ok"}'
+
+
+def test_reference_copies_original_line_and_marks_long_excerpt():
+    from app.modules.ea_meeting_reviews.schemas import SourceReference
+    from app.modules.ea_meeting_reviews.validation import resolve_reference
+    ref=SourceReference(kind='transcript',id=uuid4(),line=2)
+    original="Priya: "+("Original source text. "*30)
+    result=resolve_reference(ref,{('transcript',str(ref.id)):['Header',original]})
+    assert result.quote==original[:240]
+    assert result.excerpt_truncated is True
+    assert result.line==2
+
+
+@pytest.mark.parametrize('lines,line,code',[
+    (['Header'],2,'line_out_of_range'),
+    (['Header','  '],2,'blank_source_line'),
+])
+def test_reference_does_not_guess_replacement_lines(lines,line,code):
+    from app.modules.ea_meeting_reviews.schemas import SourceReference
+    from app.modules.ea_meeting_reviews.validation import resolve_reference
+    ref=SourceReference(kind='transcript',id=uuid4(),line=line)
+    with pytest.raises(CitationError,match=code):
+        resolve_reference(ref,{('transcript',str(ref.id)):lines})
+
+
+def test_reference_cannot_request_an_unknown_source():
+    from app.modules.ea_meeting_reviews.schemas import SourceReference
+    from app.modules.ea_meeting_reviews.validation import resolve_reference
+    with pytest.raises(CitationError,match='unknown_source'):
+        resolve_reference(SourceReference(kind='transcript',id=uuid4(),line=1),{})
+
+
+@pytest.mark.parametrize('line',[True,'1',0,-1])
+def test_reference_line_must_be_a_positive_integer(line):
+    from pydantic import ValidationError
+    from app.modules.ea_meeting_reviews.schemas import SourceReference
+    with pytest.raises(ValidationError):
+        SourceReference(kind='transcript',id=uuid4(),line=line)
+
+
+def test_generated_quote_is_not_part_of_reference_contract():
+    from pydantic import ValidationError
+    from app.modules.ea_meeting_reviews.schemas import SourceReference
+    with pytest.raises(ValidationError):
+        SourceReference.model_validate({'kind':'transcript','id':str(uuid4()),
+            'line':1,'quote':'Model-created quote must not be trusted'})

@@ -8,8 +8,13 @@ HARNESS_CONFIGURATION_VERSION = '1.0.0'
 
 
 def create_agent(settings: FoundrySettings) -> Agent:
+    return create_agent_with_client(ManagedFoundryChatClient(settings), settings.max_output_tokens)
+
+
+def create_agent_with_client(client, max_output_tokens: int) -> Agent:
+    """Share instructions and harness boundaries across explicit model providers."""
     agent = create_harness_agent(
-        client=ManagedFoundryChatClient(settings),
+        client=client,
         name=AGENT_NAME,
         description='Enterprise architecture guidance and stakeholder meeting preparation.',
         # Omit the generic harness prompt about tools/planning: none are enabled.
@@ -27,7 +32,7 @@ def create_agent(settings: FoundrySettings) -> Agent:
         history_provider=InMemoryHistoryProvider(load_messages=False),
         # Skills, file access, shell, background agents and looping remain opt-in;
         # their factories are deliberately not configured in this increment.
-        max_output_tokens=settings.max_output_tokens,
+        max_output_tokens=max_output_tokens,
         default_options={'store': False},
     )
     agent.additional_properties.update({

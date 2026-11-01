@@ -11,7 +11,7 @@ from app.agents.enterprise_architecture.profiles import PREPARE_QUESTIONS, PREPA
 from app.agents.enterprise_architecture.context import EAProjectContext, preparation_input
 from app.modules.intake.service import get_context
 from app.modules.projects.ea_access import ea_permissions
-from .execution import invoke_ea
+from .execution import invoke_ea, EAExecutionSettings
 from app.agents.enterprise_architecture.scope import OUT_OF_SCOPE_REPLY
 from .schemas import ChatRequest, ChatReply, QuestionsReply
 from app.agents.tools.public_web import search_public_web
@@ -49,7 +49,7 @@ def complete(context, task, response_type, invoke):
         return response_type.model_validate_json(text)
     except Exception as exc:
         logger.warning('EA preparation failed; exception_type=%s', type(exc).__name__)
-        raise HTTPException(502, 'EA assistant could not complete this request. Check Foundry configuration and access, then retry.') from None
+        raise HTTPException(502, 'EA assistant could not complete this request. Check the selected AI provider configuration and access, then retry.') from None
 
 
 def public_query_planner():
@@ -107,6 +107,8 @@ def meeting_chat(demand_id: DemandId, data: ChatRequest, session: SessionDep, us
 def answer_chat(context, data, task, invoke, search, planner):
     evidence = None
     if data.search_web:
+        if EAExecutionSettings().execution_mode == 'ollama':
+            raise HTTPException(422, 'Web search is disabled in Ollama mode to avoid Azure AI charges. Turn Search web off, or explicitly switch to an Azure execution mode.')
         if len(task) > 6000:
             raise HTTPException(422, 'This conversation is too long for web search. Clear chat or shorten the message before searching.')
         try:

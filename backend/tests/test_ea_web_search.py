@@ -159,3 +159,19 @@ def test_planning_error_does_not_send_raw_message_to_search(client,database,quer
     r=client.post('/api/projects/3601/ea-preparation/chat',json={'message':'secret context', 'searchWeb':True})
     assert r.status_code==502
     search.assert_not_called()
+
+
+def test_ollama_mode_blocks_search_before_any_azure_call(client,database,monkeypatch,query_planner):
+    setup_project(client,database)
+    monkeypatch.setenv('APP_EA_EXECUTION_MODE','ollama')
+    search=Mock()
+    invoke=Mock()
+    client.app.dependency_overrides[web_searcher]=lambda:search
+    client.app.dependency_overrides[hosted_invoker]=lambda:invoke
+    result=client.post('/api/projects/3601/ea-preparation/chat',json={
+        'message':'Find product advisories','searchWeb':True})
+    assert result.status_code==422
+    assert 'Ollama' in result.text
+    search.assert_not_called()
+    query_planner.assert_not_called()
+    invoke.assert_not_called()

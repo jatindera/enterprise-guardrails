@@ -34,3 +34,19 @@ def unwrap_json(text):
     value = text.strip().lstrip('\ufeff')
     fence = re.fullmatch(r'```(?:json)?[ \t]*\r?\n(.*?)\r?\n?```', value, re.S | re.I)
     return fence.group(1).strip() if fence else value
+
+
+
+def resolve_reference(reference, sources):
+    """Resolve only an existing nonblank line; never search/guess a replacement."""
+    from .schemas import Citation
+    lines = sources.get((reference.kind, str(reference.id)))
+    if lines is None: raise CitationError('unknown_source')
+    if reference.line < 1 or reference.line > len(lines):
+        raise CitationError('line_out_of_range')
+    original = lines[reference.line - 1]
+    if not original.strip(): raise CitationError('blank_source_line')
+    # Bound stored/displayed excerpts. Mark truncation explicitly; the original
+    # transcript plus its digest, source ID and line remain the full evidence.
+    return Citation(kind='transcript', id=reference.id, line=reference.line,
+        quote=original[:240], excerpt_truncated=len(original)>240)

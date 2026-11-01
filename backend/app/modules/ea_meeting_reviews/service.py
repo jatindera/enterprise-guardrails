@@ -2,7 +2,7 @@
 import hashlib
 import json
 import logging
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone, timedelta
 from pathlib import PurePath
 from uuid import UUID, uuid4
@@ -22,8 +22,8 @@ from app.agents.enterprise_architecture.context import EAProjectContext, prepara
 from app.agents.enterprise_architecture.profiles import MEETING_REVIEW
 from app.modules.ea_preparation.execution import EAExecutionSettings
 from app.modules.ea_preparation.hosted import HostedEASettings
-from .schemas import ReviewResult
-from .validation import align_citation, CitationError, unwrap_json
+from .schemas import ReviewResult, ReferencedReview, validation_issues
+from .validation import resolve_reference, CitationError, unwrap_json
 from app.modules.ea_preparation.errors import EAInferenceError
 
 logger = logging.getLogger(__name__)
@@ -281,13 +281,15 @@ def numbered(text): return [{'line':i+1, 'text':line} for i,line in enumerate(te
 
 
 def render(result, labels):
-    chunks = ['Consolidated meeting review', result.summary]
+    chunks = ['Consolidated meeting review', result.summary,
+        'Source excerpts are copied by the application. The EA reviewer must confirm that each cited line supports its finding.']
     for f in result.findings:
         chunks.append(f.kind.replace('_',' ').title() + ': ' + f.text)
         if f.question: chunks.append('Question: '+f.question)
         if f.answer: chunks.append('Stakeholder-reported answer: '+f.answer)
         for c in f.citations:
-            chunks.append(f'  Source: {labels[(c.kind,str(c.id))]} | line {c.line}: "{c.quote}"')
+            note = ' (excerpt truncated; open transcript for full line)' if c.excerpt_truncated else ''
+            chunks.append(f'  Source: {labels[(c.kind,str(c.id))]} | line {c.line}{note}: "{c.quote}"')
     if result.follow_up_questions: chunks.extend(['Next meeting questions']+['- '+q for q in result.follow_up_questions])
     text='\n\n'.join(chunks)
     if len(text)>16000: raise ValueError('Review output too large.')
@@ -308,7 +310,11 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
         manifest, digest, files = snapshot(session, project, meeting)
         if not files: raise HTTPException(422, 'Upload a transcript for this meeting first.')
         mode = EAExecutionSettings().execution_mode
-        reference = 'local' if mode == 'local' else f'{HostedEASettings().agent_name}:{HostedEASettings().agent_version}'
+        if mode == 'ollama':
+            from app.agents.ollama import OllamaSettings
+            reference = f'ollama:{OllamaSettings().model}'
+        else:
+            reference = 'local' if mode == 'local' else f'{HostedEASettings().agent_name}:{HostedEASettings().agent_version}'
         reviews=active_reviews(session, meeting)
         row=EAMeetingReview(id=review_id, meeting_id=meeting.id, version=max((r.version for r in reviews),default=0)+1,
             status='Generating', basis_review_id=None, input_digest=digest,
@@ -317,7 +323,7 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
         session.add(row); touch(session,meeting)
         # Capture primitive metadata before releasing the DB connection.
         file_info=[(str(f.id),f.file_name,f.container,f.blob_name,f.size_bytes,f.sha256,f.storage_account) for f in files]
-    stage='storage'; output_chars=0
+    stage='storage'; output_chars=0; citation_details=None
     try:
         sources={}; labels={}; transcripts=[]
         budget=max(4000,min(ReviewSettings().max_input_chars,200000))
@@ -336,17 +342,35 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
         if len(payload)>budget:
             raise HTTPException(422,'Review input exceeds its configured budget. Narrow the transcripts or increase APP_EA_REVIEW_MAX_INPUT_CHARS deliberately; no content was truncated.')
         stage='inference'
-        raw=invoke(payload)
+        if mode == 'ollama':
+            from app.agents.ollama import structured_review_output
+            output_scope = structured_review_output()
+        else:
+            output_scope = nullcontext()
+        with output_scope:
+            raw=invoke(payload)
         output_chars=len(raw)
         stage='json'
-        result=ReviewResult.model_validate_json(unwrap_json(raw))
-        stage='citations'; realigned=0
-        for finding in result.findings:
-            if finding.prepared_question_id is not None: raise CitationError('unknown_question')
-            for cite in finding.citations:
-                realigned += int(align_citation(cite,sources))
-        if realigned:
-            logger.info('ea_review_citations_aligned review_id=%s count=%s', review_id, realigned)
+        referenced=ReferencedReview.model_validate_json(unwrap_json(raw))
+        stage='citations'
+        findings=[]
+        for finding_number, finding in enumerate(referenced.findings, start=1):
+            citations=[]
+            for citation_number, cite in enumerate(finding.citations, start=1):
+                try:
+                    citations.append(resolve_reference(cite,sources).model_dump())
+                except CitationError:
+                    key = (cite.kind, str(cite.id))
+                    citation_details = dict(finding=finding_number, citation=citation_number,
+                        source_id=str(cite.id), source_known=key in sources,
+                        file_name=labels.get(key), claimed_line=cite.line,
+                        source_line_count=len(sources[key]) if key in sources else None)
+                    raise
+            item=finding.model_dump()
+            item['citations']=citations
+            findings.append(item)
+        result=ReviewResult.model_validate(dict(summary=referenced.summary,findings=findings,
+            follow_up_questions=referenced.follow_up_questions))
         stage='render'
         text=render(result,labels)
         stage='save'
@@ -369,7 +393,7 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
         if isinstance(exc,HTTPException): raise
         if isinstance(exc,CitationError):
             code=exc.code
-            message='AI source validation failed. A quote or source reference could not be verified. No review was accepted.'
+            message='AI source validation failed. A transcript reference was unknown, out of range or blank. No review was accepted.'
         elif isinstance(exc,EAInferenceError):
             code=exc.code
             message=('The model reached its output limit before completing the review.' if code=='output_limit' else
@@ -383,9 +407,21 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
         else:
             code='inference_error' if stage=='inference' else 'review_error'
             message='Could not complete AI inference. Check execution mode, model access and deployment.' if stage=='inference' else 'Could not complete the meeting review.'
-        fields=[{'type':e['type'],'loc':list(e['loc'])} for e in exc.errors()] if isinstance(exc,ValidationError) else []
-        logger.warning(json.dumps(dict(event='ea_review_failed',review_id=str(review_id),stage=stage,
-            code=code,exception_type=type(exc).__name__,output_chars=output_chars,validation_fields=fields)))
+        fields=validation_issues(exc) if isinstance(exc,ValidationError) else []
+        logging.getLogger('uvicorn.error').warning(json.dumps(dict(event='ea_review_failed',review_id=str(review_id),stage=stage,
+            code=code,exception_type=type(exc).__name__,output_chars=output_chars,validation_fields=fields,
+            citation_details=citation_details)))
+        if isinstance(exc, CitationError) and citation_details:
+            details = citation_details
+            source = (f'file {json.dumps(details["file_name"], ensure_ascii=False)}'
+                if details['source_known'] else 'unknown transcript source')
+            line_count = (f' of {details["source_line_count"]}'
+                if details['source_known'] else '')
+            message += (f' Finding {details["finding"]}, citation {details["citation"]}: '
+                f'{source}; claimed line {details["claimed_line"]}{line_count}.')
+        if code == 'invalid_schema' and fields:
+            hints = '; '.join('.'.join(map(str, f['loc'])) + ': ' + f['type'] for f in fields[:3])
+            message += ' Invalid fields: ' + hints + '.'
         raise HTTPException(502,f'{message} [{code}; reference {review_id}]') from None
 
 

@@ -27,7 +27,7 @@ def setup(client,database,monkeypatch):
         line=source['lines'][0]
         return json.dumps({'summary':'Stakeholder-reported requirements and open points.',
             'findings':[{'kind':'requirement','text':line['text'],'citations':[{'kind':'transcript',
-                'id':source['id'],'line':line['line'],'quote':line['text']}]}], 'follow_up_questions':['Who confirms this requirement?']})
+                'id':source['id'],'line':line['line']}]}], 'follow_up_questions':['Who confirms this requirement?']})
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
     return store,calls
 
@@ -113,7 +113,7 @@ def test_storage_failure_pending_retry_and_cancel(client,database,setup):
 def test_invalid_citations_fail_without_creating_accepted_review(client,database,setup):
     m=create(client);upload(client,m)
     client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({'summary':'Unsupported',
-        'findings':[{'kind':'requirement','text':'Invented','citations':[{'kind':'transcript','id':str(uuid4()),'line':1,'quote':'Invented'}]}]})
+        'findings':[{'kind':'requirement','text':'Invented','citations':[{'kind':'transcript','id':str(uuid4()),'line':1}]}]})
     r=generate(client,m);assert r.status_code==502,r.text
     assert state(client,m)['reviews'][0]['status']=='Failed'
     assert client.get(BASE).json()['latestAcceptedReview'] is None
@@ -209,8 +209,8 @@ def test_unprepared_question_can_be_extracted_with_transcript_evidence(client,da
         source=json.loads(raw)['transcripts'][0]
         return json.dumps({'summary':'Support ownership was discussed.','findings':[{'kind':'question_answer',
             'text':'A question outside the prepared list was asked.','question':'Who owns support?',
-            'answer':'Operations owns support.','prepared_question_id':None,
-            'citations':[{'kind':'transcript','id':source['id'],'line':1,'quote':'Operations owns support.'}]}]})
+            'answer':'Operations owns support.',
+            'citations':[{'kind':'transcript','id':source['id'],'line':1}]}]})
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
     response=generate(client,m)
     assert response.status_code==200,response.text
@@ -339,7 +339,7 @@ def test_model_cannot_cite_previous_review_without_transcript_evidence(client,da
     client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({
         'summary':'Unsupported prior interpretation.','findings':[{
             'kind':'requirement','text':'Unsupported prior interpretation.',
-            'citations':[{'kind':'review','id':str(uuid4()),'line':1,'quote':'Unsupported'}]}]})
+            'citations':[{'kind':'review','id':str(uuid4()),'line':1}]}]})
     response=generate(client,m)
     assert response.status_code==502
     assert state(client,m)['reviews'][0]['status']=='Failed'
@@ -356,3 +356,111 @@ def test_old_context_draft_requires_regeneration_before_acceptance(client,databa
     regenerated=generate(client,m)
     assert regenerated.status_code==200
     assert accept(client,m,regenerated.json()).status_code==200
+
+
+def test_ollama_review_records_local_model_without_hosted_configuration(client,database,setup,monkeypatch):
+    monkeypatch.setenv('APP_EA_EXECUTION_MODE','ollama')
+    monkeypatch.setenv('APP_OLLAMA_MODEL','local-test:8b')
+    monkeypatch.delenv('APP_EA_AGENT_VERSION',raising=False)
+    m=create(client);upload(client,m)
+    response=generate(client,m)
+    assert response.status_code==200,response.text
+    with Session(database) as db:
+        row=db.get(EAMeetingReview,UUID(response.json()['id']))
+        assert row.execution_mode=='ollama'
+        assert row.agent_reference=='ollama:local-test:8b'
+
+
+def test_schema_error_is_visible_and_logged_without_sensitive_values(client,database,setup,caplog):
+    import logging
+    m=create(client);upload(client,m)
+    secret='CONFIDENTIAL_VALUE_DO_NOT_LOG'
+    client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({
+        'summary':'Summary','findings':[{'kind':secret,'text':'A requirement',
+            'citations':[{'kind':'transcript','id':str(uuid4()),'line':1}]}],
+        secret:'unexpected field'})
+    with caplog.at_level(logging.WARNING,logger='uvicorn.error'):
+        response=generate(client,m)
+    assert response.status_code==502
+    assert 'findings.0.kind: literal_error' in response.text
+    assert '<unknown_field>' in response.text
+    assert secret not in response.text
+    records=[r.message for r in caplog.records if 'ea_review_failed' in r.message]
+    assert records
+    assert secret not in '\n'.join(records)
+    event=json.loads(records[-1])
+    assert any(f['loc']==['findings',0,'kind'] for f in event['validation_fields'])
+    assert event['code']=='invalid_schema'
+
+
+@pytest.mark.parametrize('unknown_source',[False,True])
+def test_citation_failure_shows_safe_source_location_without_quote(client,database,setup,caplog,unknown_source):
+    import logging
+    m=create(client)
+    upload(client,m,'Header\nPRIVATE_TRANSCRIPT_CONTENT must stay out of logs.',name='stakeholder-session.txt')
+    bad_quote='PRIVATE_MODEL_QUOTE_THAT_DOES_NOT_EXIST'
+    def invoke(raw):
+        source=json.loads(raw)['transcripts'][0]
+        return json.dumps({'summary':'Unsupported statement.','findings':[{
+            'kind':'requirement','text':'Unsupported statement.',
+            'citations':[{'kind':'transcript','id':str(uuid4()) if unknown_source else source['id'],
+                'line':999}]}]})
+    client.app.dependency_overrides[hosted_invoker]=lambda:invoke
+    with caplog.at_level(logging.WARNING,logger='uvicorn.error'):
+        response=generate(client,m)
+    assert response.status_code==502
+    message=response.json()['error']['message']
+    assert 'Finding 1, citation 1' in message
+    assert 'claimed line 999' in message
+    if unknown_source:
+        assert 'unknown transcript source' in message
+        assert 'unknown_source' in message
+        assert 'stakeholder-session.txt' not in message
+    else:
+        assert 'stakeholder-session.txt' in message
+        assert 'of 2' in message
+        assert 'line_out_of_range' in message
+    events=[json.loads(r.message) for r in caplog.records if 'ea_review_failed' in r.message]
+    details=events[-1]['citation_details']
+    assert details['finding']==1 and details['citation']==1
+    assert details['claimed_line']==999
+    assert details['source_known'] is not unknown_source
+    assert 'quote' not in details
+    assert bad_quote not in message and bad_quote not in caplog.text
+    assert 'PRIVATE_TRANSCRIPT_CONTENT' not in message and 'PRIVATE_TRANSCRIPT_CONTENT' not in caplog.text
+    assert state(client,m)['reviews'][0]['status']=='Failed'
+
+
+def test_short_exact_quote_still_saves_review(client,database,setup):
+    m=create(client);upload(client,m,'Header\nPriya: We will use synthetic data for the pilot.')
+    def invoke(raw):
+        source=json.loads(raw)['transcripts'][0]
+        return json.dumps({'summary':'The pilot uses synthetic data.','findings':[{
+            'kind':'requirement','text':'Use synthetic data for the pilot.',
+            'citations':[{'kind':'transcript','id':source['id'],'line':2}]}]})
+    client.app.dependency_overrides[hosted_invoker]=lambda:invoke
+    response=generate(client,m)
+    assert response.status_code==200,response.text
+    assert response.json()['status']=='Draft'
+    assert 'line 2' in response.json()['text']
+
+
+def test_backend_supplies_excerpt_from_long_original_line(client,database,setup):
+    m=create(client)
+    original="Priya: We should test disabling the workload's access, stopping the test runtime and removing its registration through supported procedures. We have not written or tested the sequence, and we do not yet know how quickly access revocation takes effect across all systems."
+    upload(client,m,'Header\n'+original,name='long-line.txt')
+    def invoke(raw):
+        source=json.loads(raw)['transcripts'][0]
+        return json.dumps({'summary':'Recovery remains untested.','findings':[{
+            'kind':'open_item','text':'Recovery procedures require testing.',
+            'citations':[{'kind':'transcript','id':source['id'],'line':2}]}]})
+    client.app.dependency_overrides[hosted_invoker]=lambda:invoke
+    response=generate(client,m)
+    assert response.status_code==200,response.text
+    assert 'excerpt truncated; open transcript for full line' in response.json()['text']
+    with Session(database) as db:
+        row=db.get(EAMeetingReview,UUID(response.json()['id']))
+        cite=json.loads(row.ai_result)['findings'][0]['citations'][0]
+        assert cite['quote']==original[:240] and cite['excerpt_truncated']
+        assert row.profile_version=='1.2.0'
+    assert accept(client,m,response.json()).status_code==200
