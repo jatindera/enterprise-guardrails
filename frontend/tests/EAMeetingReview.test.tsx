@@ -27,26 +27,25 @@ beforeEach(()=>{
 });
 afterEach(cleanup);
 function show(callback=vi.fn(),canEdit=true){return render(<EAMeetingReview demandId="3845" canEdit={canEdit} beforeGenerate={async()=>{}} onAcceptedReviewChange={callback}/>);}
-it("restores prior acceptance, saves edited versions, accepts the latest draft and preserves history",async()=>{
+it("shows AI output read-only, accepts it and preserves history",async()=>{
   const callback=vi.fn();const view=show(callback);
   await screen.findByText("second.txt");
-  expect(callback).toHaveBeenCalledWith(null);
   fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
-  await screen.findByDisplayValue("Consolidated second review");
-  fireEvent.change(screen.getByLabelText("Consolidated review"),{target:{value:"Reviewer-corrected consolidated review"}});
-  expect((screen.getByRole("button",{name:"Accept meeting review"}) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole("button",{name:"Save review changes"}));
-  await screen.findByText("A new review version was saved.");
+  await screen.findByText("Consolidated second review");
+  expect(screen.queryByLabelText("Consolidated review")).toBeNull();
+  expect(screen.queryByRole("button",{name:"Save review changes"})).toBeNull();
+  expect(screen.queryByText("Edit review text")).toBeNull();
+  expect(mocks.edit).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button",{name:"Accept meeting review"}));
   expect(mocks.accept).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button",{name:"Confirm acceptance"}));
   await screen.findByRole("button",{name:"Reopen accepted review"});
-  expect(callback).toHaveBeenCalledWith({text:"Reviewer-corrected consolidated review",acceptedAt:"2026-10-31T12:00:00Z"});
+  expect(callback).toHaveBeenCalledWith(expect.objectContaining({text:"Consolidated second review",acceptedAt:"2026-10-31T12:00:00Z"}));
   fireEvent.change(screen.getByLabelText("Review workspace"),{target:{value:"m1"}});
-  await screen.findByDisplayValue(accepted.text!);
-  expect((screen.getByLabelText("Consolidated review") as HTMLTextAreaElement).disabled).toBe(true);
+  await screen.findByText(accepted.text!);
+  expect(screen.queryByLabelText("Consolidated review")).toBeNull();
   view.unmount();show(callback);
-  expect(await screen.findByDisplayValue("Reviewer-corrected consolidated review")).toBeTruthy();
+  expect(await screen.findByText("Consolidated second review")).toBeTruthy();
 });
 it("sends original files to storage only when Save transcripts is clicked",async()=>{
   show();await screen.findByText("second.txt");
@@ -143,9 +142,9 @@ it("reopens the accepted workspace with a reason and keeps its accepted version 
     return structuredClone(second);
   });
   show(callback);
-  await screen.findByDisplayValue("Accepted current review");
+  await screen.findByText("Accepted current review");
   expect(screen.queryByRole("button",{name:"Start next meeting"})).toBeNull();
-  expect((screen.getByLabelText("Consolidated review") as HTMLTextAreaElement).disabled).toBe(true);
+  expect(screen.queryByLabelText("Consolidated review")).toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"Reopen accepted review"}));
   const submit=screen.getByRole("button",{name:"Reopen review"}) as HTMLButtonElement;
   expect(submit.disabled).toBe(true);
@@ -156,7 +155,7 @@ it("reopens the accepted workspace with a reason and keeps its accepted version 
   expect(screen.getByRole("button",{name:"Browse files"})).toBeTruthy();
   expect(callback).toHaveBeenLastCalledWith(null);
   fireEvent.change(screen.getByLabelText("Review version"),{target:{value:"final"}});
-  expect((screen.getByLabelText("Consolidated review") as HTMLTextAreaElement).disabled).toBe(true);
+  expect(screen.queryByLabelText("Consolidated review")).toBeNull();
   expect(second.reviews[0].status).toBe("Accepted");
 });
 
@@ -187,7 +186,7 @@ it("saves pending proposal before AI generation and uses the saved revision",asy
   fireEvent.click(screen.getByRole("checkbox",{name:"Databricks"}));
   fireEvent.change(screen.getByLabelText("Proposed technology stack rationale"),{target:{value:"Data processing proposal"}});
   fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
-  await screen.findByDisplayValue("Consolidated second review");
+  await screen.findByText("Consolidated second review");
   expect(mocks.proposal).toHaveBeenCalledOnce();
   expect(mocks.generate.mock.calls[0][3]).toBe(3);
   expect(mocks.proposal.mock.invocationCallOrder[0]).toBeLessThan(mocks.generate.mock.invocationCallOrder[0]);
@@ -208,7 +207,7 @@ it("does not invoke AI if proposal saving fails and retains the user's input",as
 it("allows cancellation without accepting, then confirms exactly once",async()=>{
   show();await screen.findByText("second.txt");
   fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
-  await screen.findByDisplayValue("Consolidated second review");
+  await screen.findByText("Consolidated second review");
   fireEvent.click(screen.getByRole("button",{name:"Accept meeting review"}));
   expect(screen.getByRole("dialog").textContent).toContain("does not approve the project");
   expect(mocks.accept).not.toHaveBeenCalled();
@@ -224,9 +223,18 @@ it("keeps the confirmation open after an acceptance failure",async()=>{
   mocks.accept.mockRejectedValueOnce(new Error("Review changed. Refresh saved data."));
   show();await screen.findByText("second.txt");
   fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
-  await screen.findByDisplayValue("Consolidated second review");
+  await screen.findByText("Consolidated second review");
   fireEvent.click(screen.getByRole("button",{name:"Accept meeting review"}));
   fireEvent.click(screen.getByRole("button",{name:"Confirm acceptance"}));
   await waitFor(()=>expect(screen.getByRole("dialog").textContent).toContain("Review changed"));
   expect(second.state).toBe("Open");
+});
+
+it("passes the accepted review identity and locked proposal to the human draft UI",async()=>{
+  second.state="Accepted";second.canEdit=false;second.canAccept=false;second.isCurrent=true;second.reviews=[accepted];
+  second.proposal={technologies:["Power Apps"],rationale:"Locked proposal"};
+  const callback=vi.fn();show(callback);
+  await screen.findByText(accepted.text!);
+  await waitFor(()=>expect(callback).toHaveBeenCalledWith(expect.objectContaining({id:"r1",version:1,
+    proposal:{technologies:["Power Apps"],rationale:"Locked proposal"}})));
 });

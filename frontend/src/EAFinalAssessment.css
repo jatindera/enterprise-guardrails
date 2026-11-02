@@ -1,0 +1,9 @@
+.ea-final-assessment { margin-top: 20px; border-left: 4px solid #2178b9; }
+.ea-final-source, .ea-final-draft { margin-top: 20px; padding: 18px; border: 1px solid #d8e5f1; border-radius: 8px; }
+.ea-final-source { background: #f8fbff; }
+.ea-final-source details, .ea-final-draft details { margin: 12px 0; }
+.ea-final-source summary, .ea-final-draft summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.ea-final-fields { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
+.ea-final-fields > legend { font-weight: 600; margin-bottom: 12px; }
+.ea-final-snapshot { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 0; }
+.ea-final-notice { color: #075a9c; background: #e9f3ff; padding: 12px 16px; border-left: 4px solid #176eb4; }

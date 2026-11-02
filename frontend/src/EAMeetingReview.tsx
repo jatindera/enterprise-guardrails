@@ -34,11 +34,10 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
   const callback = useRef(onAcceptedReviewChange); callback.current = onAcceptedReviewChange;
   const revision = meeting?.reviews.find(r => r.id === versionId);
   const latest = meeting?.reviews.filter(r => r.status === "Draft" || r.status === "Accepted").at(-1);
-  const textDirty = Boolean(revision && text !== (revision.text ?? ""));
   const proposalDirty = Boolean(meeting && (
     JSON.stringify(proposal.technologies) !== JSON.stringify(meeting.proposal?.technologies ?? []) ||
     proposal.rationale !== (meeting.proposal?.rationale ?? "")));
-  const dirty = textDirty || proposalDirty;
+  const dirty = proposalDirty;
   const generating = meeting?.reviews.some(r => r.status === "Generating") ?? false;
   const editable = canEdit && meeting?.canEdit && !busy && !generating;
   const latestSelected = Boolean(latest && revision?.id === latest.id);
@@ -48,13 +47,20 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
     if (!active.current || signal?.aborted || currentDemand.current !== demandId) return value;
     setIndex(value);
     const accepted = value.latestAcceptedReview;
-    callback.current(accepted?.text && accepted.acceptedAt ? {text: accepted.text, acceptedAt: accepted.acceptedAt} : null);
+    callback.current(accepted?.text && accepted.acceptedAt ? {text: accepted.text, acceptedAt: accepted.acceptedAt, id: accepted.id, version: accepted.version} : null);
     return value;
   }, [demandId]);
 
   const loadMeeting = useCallback(async (id: string, signal?: AbortSignal) => {
     const value = await api.getEAMeeting(demandId, id, signal);
     if (!active.current || signal?.aborted || currentDemand.current !== demandId) return;
+    if (value.isCurrent === true && value.state === "Accepted") {
+      const accepted=value.reviews.filter(r => r.status === "Accepted").at(-1);
+      if (accepted?.text && accepted.acceptedAt) callback.current({
+        text:accepted.text,acceptedAt:accepted.acceptedAt,id:accepted.id,version:accepted.version,
+        proposal:value.proposal ? {technologies:[...value.proposal.technologies],rationale:value.proposal.rationale} : undefined,
+      });
+    }
     setMeeting(value);
     setProposal(value.proposal ?? {technologies:[],rationale:""});
     const recent = value.reviews.filter(r => r.text).at(-1);
@@ -133,11 +139,6 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
     try { await api.generateEAReview(demandId, saved.id, crypto.randomUUID(), saved.revision); }
     finally { await refresh(); }
   }
-  async function saveEdit() {
-    if (!meeting || !revision) return;
-    await api.editEAReview(demandId,meeting.id,crypto.randomUUID(),revision.id,text,meeting.revision);
-    await refresh(); setNotice("A new review version was saved.");
-  }
   async function accept() {
     if (!meeting || !revision) return;
     await api.acceptEAReview(demandId,meeting.id,revision.id,meeting.revision);
@@ -199,24 +200,23 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
             <Button appearance="primary" disabled={!editable || dirty || !local.length} onClick={() => void run(upload, "Saving transcripts…")}>Save transcripts</Button></>}
         </div>
       </section>
-      <EAReviewProposal key={`${demandId}:${meeting.id}`} disabled={!editable || textDirty}
-        value={proposal} dirty={proposalDirty} onChange={setProposal} saveDisabled={textDirty}
+      <EAReviewProposal key={`${demandId}:${meeting.id}`} disabled={!editable}
+        value={proposal} dirty={proposalDirty} onChange={setProposal} saveDisabled={false}
         onDiscard={() => setProposal(meeting.proposal ?? {technologies:[],rationale:""})}
         onSave={() => void run(async()=>{await saveProposal();},"Saving proposal…")}/>
       <section className="content-panel"><div className="panel-heading"><h2>AI meeting review</h2><Badge>{revision?.status ?? "Not generated"}</Badge></div>
         <div className="workspace-panel-body">
-          <p>New AI reviews use a standard seven-section template: project understanding, requirements and constraints, independent technology review, gaps and contradictions, follow-up questions, review readiness and evidence references. “Ready for human assessment” means sufficient information for architectural judgment, not completed testing or project approval. Reviewer edits are saved as new versions. Acceptance confirms the summary and does not approve the project.</p>
+          <p>New AI reviews use a standard seven-section template: project understanding, requirements and constraints, independent technology review, gaps and contradictions, follow-up questions, review readiness and evidence references. “Ready for human assessment” means sufficient information for architectural judgment, not completed testing or project approval. AI review text is read-only; the human EA final review is edited separately in EA assessment. Acceptance confirms the summary and does not approve the project.</p>
           <p className="workspace-secondary">Review context: minimal project intake, your saved proposed technology stack/rationale and all Ready transcripts listed in this workspace. Previous AI reviews and prepared questions are not sent. Attach all meeting transcripts you want included.</p>
-          <div className="ea-review-toolbar"><Button appearance="primary" disabled={!editable || local.length > 0 || textDirty || !meeting.transcripts.some(f => f.status === "Ready") || meeting.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
+          <div className="ea-review-toolbar"><Button appearance="primary" disabled={!editable || local.length > 0 || !meeting.transcripts.some(f => f.status === "Ready") || meeting.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
             onClick={() => void run(generate)}>{latest ? "Regenerate review" : "Review meeting with AI"}</Button>
             {meeting.reviews.filter(r => r.text).length > 0 && <label>Review version <select aria-label="Review version" value={versionId} disabled={busy || dirty}
               onChange={e => {const row=meeting.reviews.find(r => r.id === e.target.value); if (row) selectReview(row);}}>
                 {meeting.reviews.filter(r => r.text).map(r => <option key={r.id} value={r.id}>Version {r.version} · {r.status}</option>)}</select></label>}
           </div>
-          {revision?.text && <><EAReviewReader text={text}/><details className="ea-review-editor"><summary>Edit review text</summary><label className="session-field">Consolidated review<Textarea aria-label="Consolidated review" rows={18} resize="vertical" maxLength={16000}
-            disabled={!editable || !latestSelected || revision.status !== "Draft" || proposalDirty} value={text} onChange={(_,data) => setText(data.value)}/></label></details>
-            <div className="ea-review-toolbar"><Button disabled={!editable || !latestSelected || revision.status !== "Draft" || proposalDirty || !textDirty || !text.trim()} onClick={() => void run(saveEdit)}>Save review changes</Button>
-              {dirty && <Button disabled={busy} onClick={() => setText(revision.text ?? "")}>Discard edits</Button>}
+          {revision?.text && <><EAReviewReader text={text}/>
+            <p className="workspace-secondary">AI-generated review — read-only. Make human edits in EA assessment → Human EA final review. Accepting here confirms the meeting review, not the final EA decision.</p>
+            <div className="ea-review-toolbar">
               <Button appearance="primary" disabled={!editable || !meeting.canAccept || !latestSelected || dirty || local.length > 0 || meeting.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
                 onClick={() => setAcceptOpen(true)}>Accept meeting review</Button></div>
             {revision.acceptedAt && <p>Accepted by {revision.acceptedBy} · {new Date(revision.acceptedAt).toLocaleString()}</p>}

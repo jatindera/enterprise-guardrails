@@ -120,6 +120,9 @@ export type PortfolioFilter =
   | "arbCompleted";
 
 export interface AcceptedMeetingReview {
+  id?: string;
+  version?: number;
+  proposal?: {technologies: EATechnology[]; rationale: string};
   text: string;
   acceptedAt: string;
 }

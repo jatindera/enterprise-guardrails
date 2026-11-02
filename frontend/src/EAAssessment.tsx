@@ -4,7 +4,6 @@ import { useProjectUpdate } from "./ProjectUpdates";
 import {
   Badge,
   Button,
-  Checkbox,
   Input,
   MessageBar,
   MessageBarBody,
@@ -20,16 +19,8 @@ import type { CurrentDiagramReference } from "./ArchitectureDiagrams";
 import type {
   AcceptedMeetingReview,
   EAAction,
-  EATechnology,
   Project,
 } from "./types";
-
-const technologyOptions: EATechnology[] = [
-  "Azure", "Foundry", "Copilot Studio", "M365 agent", "Power Apps",
-  "Databricks", "SAP BTP", "Salesforce", "SaaS / Third-party service",
-  "External APIs",  "Networking / Connectivity",  "Microsoft 365 / SharePoint",
-  "Power Automate",  "Power BI",  "On-premises systems", "Others",
-];
 
 interface EAAssessmentProps {
   project: Project;
@@ -47,16 +38,6 @@ export default function EAAssessment({
   onOpenReviewSession,
 }: EAAssessmentProps) {
   const updateProject = useProjectUpdate(project.demandId);
-  const selectedTechnologies = project.eaTechnologyStack ?? [];
-
-  function changeTechnology(technology: EATechnology, checked: boolean) {
-    if (readOnly) return;
-    const next = checked
-      ? [...new Set([...selectedTechnologies, technology])]
-      : selectedTechnologies.filter((item) => item !== technology);
-    updateProject({ eaTechnologyStack: next });
-  }
-
   const [items, setItems] = useState<EAAction[]>(
     () => project.eaItems ?? [],
   );
@@ -215,32 +196,15 @@ export default function EAAssessment({
         </MessageBarBody>
       </MessageBar>
 
-      <section className="content-panel ea-technology-stack">
-        <div className="panel-heading">
-          <h2>Solution technology stack</h2>
-          <Badge appearance="tint" color="brand">{selectedTechnologies.length} selected</Badge>
-        </div>
-        <div className="workspace-panel-body">
-          <p className="workspace-secondary">Select all platforms and services used by this solution.</p>
-          <fieldset className="ea-technology-options" disabled={readOnly}>
-            <legend className="ea-tech-legend">Technologies used</legend>
-            {technologyOptions.map((technology) => (
-              <Checkbox key={technology} label={technology}
-                checked={selectedTechnologies.includes(technology)}
-                onChange={(_, data) => changeTechnology(technology, data.checked === true)} />
-            ))}
-          </fieldset>
-          {selectedTechnologies.includes("Others") && (
-            <label className="session-field ea-other-technologies">
-              Other technologies
-              <Textarea rows={2} value={project.eaTechnologyStackOther ?? ""}
-                readOnly={readOnly} placeholder="Specify any other platforms or technologies…"
-                onChange={(_, data) => { if (!readOnly) updateProject({ eaTechnologyStackOther: data.value }); }} />
-            </label>
-          )}
-          {readOnly && <p className="workspace-secondary">Technology selections are read-only for your account.</p>}
-        </div>
-      </section>
+      <EAApprovalReport
+        canClose={canClose}
+        readOnly={readOnly}
+        acceptedReview={acceptedReview}
+        key={`ea-report-${project.demandId}`}
+        project={project}
+        items={items}
+        currentDiagram={currentDiagram}
+      />
 
       <ArchitectureDiagrams
         key={project.demandId}
@@ -265,27 +229,6 @@ export default function EAAssessment({
         </div>
 
         <div className="workspace-panel-body">
-          <details className="ea-accepted-review-reference">
-            <summary>Accepted meeting review · {acceptedReview ? "Available" : "Not available"}</summary>
-            <div className="workspace-panel-body">
-              {acceptedReview ? (
-                <>
-                  <p className="workspace-secondary">
-                    Accepted locally: {new Date(acceptedReview.acceptedAt).toLocaleString()}
-                  </p>
-                  <pre className="intake-source-text">{acceptedReview.text}</pre>
-                  <p className="workspace-secondary">
-                    Use this review as a reference when recording EA requirements or pending items below.
-                  </p>
-                </>
-              ) : (
-                <p className="session-body-text">
-                  Accept a review under Review meeting to see it here. You can add EA items without an accepted meeting review.
-                </p>
-              )}
-            </div>
-          </details>
-
           <p className="workspace-secondary">
             Record a requirement, design concern, or outstanding
             action. For example: “Update the diagram to show
@@ -433,13 +376,7 @@ export default function EAAssessment({
         </div>
       </section>
 
-      <EAApprovalReport
-        canClose={canClose}
-        key={`ea-report-${project.demandId}`}
-        project={project}
-        items={items}
-        currentDiagram={currentDiagram}
-      />
+
 
       <p className="workspace-secondary">
         Editing a closed item’s description reopens it.
