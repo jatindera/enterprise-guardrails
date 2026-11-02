@@ -38,6 +38,8 @@ it("restores prior acceptance, saves edited versions, accepts the latest draft a
   fireEvent.click(screen.getByRole("button",{name:"Save review changes"}));
   await screen.findByText("A new review version was saved.");
   fireEvent.click(screen.getByRole("button",{name:"Accept meeting review"}));
+  expect(mocks.accept).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button",{name:"Confirm acceptance"}));
   await screen.findByRole("button",{name:"Reopen accepted review"});
   expect(callback).toHaveBeenCalledWith({text:"Reviewer-corrected consolidated review",acceptedAt:"2026-10-31T12:00:00Z"});
   fireEvent.change(screen.getByLabelText("Review workspace"),{target:{value:"m1"}});
@@ -200,4 +202,31 @@ it("does not invoke AI if proposal saving fails and retains the user's input",as
   expect(mocks.generate).not.toHaveBeenCalled();
   expect(screen.getByDisplayValue("Keep my edits")).toBeTruthy();
   expect(screen.getByRole("button",{name:"Discard proposal changes"})).toBeTruthy();
+});
+
+
+it("allows cancellation without accepting, then confirms exactly once",async()=>{
+  show();await screen.findByText("second.txt");
+  fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
+  await screen.findByDisplayValue("Consolidated second review");
+  fireEvent.click(screen.getByRole("button",{name:"Accept meeting review"}));
+  expect(screen.getByRole("dialog").textContent).toContain("does not approve the project");
+  expect(mocks.accept).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button",{name:"Cancel"}));
+  expect(mocks.accept).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button",{name:"Accept meeting review"}));
+  fireEvent.click(screen.getByRole("button",{name:"Confirm acceptance"}));
+  await screen.findByRole("button",{name:"Reopen accepted review"});
+  expect(mocks.accept).toHaveBeenCalledOnce();
+});
+
+it("keeps the confirmation open after an acceptance failure",async()=>{
+  mocks.accept.mockRejectedValueOnce(new Error("Review changed. Refresh saved data."));
+  show();await screen.findByText("second.txt");
+  fireEvent.click(screen.getByRole("button",{name:"Review meeting with AI"}));
+  await screen.findByDisplayValue("Consolidated second review");
+  fireEvent.click(screen.getByRole("button",{name:"Accept meeting review"}));
+  fireEvent.click(screen.getByRole("button",{name:"Confirm acceptance"}));
+  await waitFor(()=>expect(screen.getByRole("dialog").textContent).toContain("Review changed"));
+  expect(second.state).toBe("Open");
 });

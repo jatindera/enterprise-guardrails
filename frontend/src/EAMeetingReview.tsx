@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from "react";
 import {Badge, Button, Textarea, Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions} from "@fluentui/react-components";
 import TranscriptUpload from "./TranscriptUpload";
 import EAReviewProposal from "./EAReviewProposal";
+import EAReviewReader from "./EAReviewReader";
 import type {TranscriptAttachment} from "./TranscriptUpload";
 import type {AcceptedMeetingReview} from "./types";
 import * as api from "./api/eaReviews";
@@ -26,6 +27,7 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
   const [preview, setPreview] = useState<{name:string;text:string} | null>(null);
   const [reopenReason, setReopenReason] = useState("");
   const [reopenOpen, setReopenOpen] = useState(false);
+  const [acceptOpen, setAcceptOpen] = useState(false);
   const reopenId = useRef<string | null>(null);
   const active = useRef(true);
   const currentDemand = useRef(demandId); currentDemand.current = demandId;
@@ -63,7 +65,7 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
   useEffect(() => {
     active.current = true;
     const controller = new AbortController();
-    setIndex(null); setMeeting(null); setSelected(""); setLocal([]); setProposal({technologies:[],rationale:""}); setError(""); callback.current(null);
+    setAcceptOpen(false); setIndex(null); setMeeting(null); setSelected(""); setLocal([]); setProposal({technologies:[],rationale:""}); setError(""); callback.current(null);
     void loadIndex(controller.signal).then(value => {
       if (!active.current || controller.signal.aborted) return;
       setSelected(value.meetings.at(-1)?.id ?? "");
@@ -139,6 +141,7 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
   async function accept() {
     if (!meeting || !revision) return;
     await api.acceptEAReview(demandId,meeting.id,revision.id,meeting.revision);
+    setAcceptOpen(false);
     await refresh(); setNotice("Meeting review accepted. Assigned EA or Admin can reopen it when new information is available.");
   }
   async function reopen() {
@@ -210,12 +213,12 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
               onChange={e => {const row=meeting.reviews.find(r => r.id === e.target.value); if (row) selectReview(row);}}>
                 {meeting.reviews.filter(r => r.text).map(r => <option key={r.id} value={r.id}>Version {r.version} · {r.status}</option>)}</select></label>}
           </div>
-          {revision?.text && <><label className="session-field">Consolidated review<Textarea aria-label="Consolidated review" rows={18} resize="vertical" maxLength={16000}
-            disabled={!editable || !latestSelected || revision.status !== "Draft" || proposalDirty} value={text} onChange={(_,data) => setText(data.value)}/></label>
+          {revision?.text && <><EAReviewReader text={text}/><details className="ea-review-editor"><summary>Edit review text</summary><label className="session-field">Consolidated review<Textarea aria-label="Consolidated review" rows={18} resize="vertical" maxLength={16000}
+            disabled={!editable || !latestSelected || revision.status !== "Draft" || proposalDirty} value={text} onChange={(_,data) => setText(data.value)}/></label></details>
             <div className="ea-review-toolbar"><Button disabled={!editable || !latestSelected || revision.status !== "Draft" || proposalDirty || !textDirty || !text.trim()} onClick={() => void run(saveEdit)}>Save review changes</Button>
               {dirty && <Button disabled={busy} onClick={() => setText(revision.text ?? "")}>Discard edits</Button>}
               <Button appearance="primary" disabled={!editable || !meeting.canAccept || !latestSelected || dirty || local.length > 0 || meeting.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
-                onClick={() => void run(accept)}>Accept meeting review</Button></div>
+                onClick={() => setAcceptOpen(true)}>Accept meeting review</Button></div>
             {revision.acceptedAt && <p>Accepted by {revision.acceptedBy} · {new Date(revision.acceptedAt).toLocaleString()}</p>}
             {revision.basisReviewId && <p className="workspace-secondary">Based on the previous accepted review. Select an earlier meeting to inspect its history.</p>}
           </>}
@@ -227,6 +230,18 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
         </div>
       </section>
     </>}
+    <Dialog open={acceptOpen} onOpenChange={(_,data) => {if (!busy) setAcceptOpen(data.open);}}>
+      <DialogSurface><DialogBody><DialogTitle>Accept this meeting review?</DialogTitle>
+        <DialogContent><p>Confirm that you have reviewed the summary, findings and source references.</p>
+          <p>Acceptance locks this review workspace. The assigned EA or Admin can reopen it with a reason. This does not approve the project or replace the human EA’s final assessment.</p>
+          {error && <p role="alert">{error}</p>}
+        </DialogContent><DialogActions>
+          <Button disabled={busy} onClick={() => setAcceptOpen(false)}>Cancel</Button>
+          <Button appearance="primary" disabled={busy || !editable || !meeting?.canAccept || !latestSelected || dirty || local.length > 0 || meeting?.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
+            onClick={() => void run(accept,"Accepting meeting review…")}>Confirm acceptance</Button>
+        </DialogActions>
+      </DialogBody></DialogSurface>
+    </Dialog>
     <Dialog open={reopenOpen} onOpenChange={(_,data) => {if (!busy) setReopenOpen(data.open);}}>
       <DialogSurface><DialogBody><DialogTitle>Reopen accepted review</DialogTitle>
         <DialogContent><p>The accepted version remains in history. Reopening creates a new draft in this workspace.</p>
