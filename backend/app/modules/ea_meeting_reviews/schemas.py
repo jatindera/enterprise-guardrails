@@ -1,6 +1,7 @@
 from typing import Literal
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import Annotated
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 from app.core.api_model import APIModel
 
 class CreateMeeting(APIModel):
@@ -44,10 +45,26 @@ class ProposalUpdate(Revision):
         return self
 
 
+ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+
+class Readiness(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    status: Literal['Needs clarification', 'Ready for human assessment']
+    reason: str = Field(min_length=1, max_length=800)
+
+
 class TechnologyReview(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
     status: Literal['Reviewed','Needs clarification']
     feedback: str = Field(min_length=1,max_length=2000)
+    alternatives: list[ShortText] = Field(default_factory=list, max_length=3)
+    trade_offs: list[ShortText] = Field(default_factory=list, max_length=3)
+
+
+class StandardTechnologyReview(TechnologyReview):
+    alternatives: list[ShortText] = Field(max_length=3)
+    trade_offs: list[ShortText] = Field(max_length=3)
 
 
 class EditReview(Revision):
@@ -75,10 +92,12 @@ class Finding(BaseModel):
 
 class ReviewResult(BaseModel):
     model_config = ConfigDict(extra='forbid')
+    template_version: Literal['2.0'] | None = None
+    readiness: Readiness | None = None
     summary: str = Field(min_length=1, max_length=3000)
     technology_review: TechnologyReview | None = None
     findings: list[Finding] = Field(min_length=1, max_length=12)
-    follow_up_questions: list[str] = Field(default_factory=list, max_length=6)
+    follow_up_questions: list[ShortText] = Field(default_factory=list, max_length=6)
 
 
 
@@ -102,13 +121,17 @@ class ReferencedReview(BaseModel):
     """Model response contract. Source excerpts are supplied by the backend."""
     model_config = ConfigDict(extra='forbid')
     summary: str = Field(min_length=1, max_length=3000)
-    technology_review: TechnologyReview
+    template_version: Literal['2.0']
+    readiness: Readiness
+    technology_review: StandardTechnologyReview
     findings: list[ReferencedFinding] = Field(min_length=1, max_length=12)
-    follow_up_questions: list[str] = Field(default_factory=list, max_length=6)
+    follow_up_questions: list[ShortText] = Field(default_factory=list, max_length=6)
 
     @model_validator(mode='after')
     def clarification_questions_required(self):
-        if self.technology_review.status=='Needs clarification' and not self.follow_up_questions:
+        if self.technology_review.status=='Needs clarification' and self.readiness.status!='Needs clarification':
+            raise ValueError('Unresolved technology clarification prevents readiness.')
+        if self.readiness.status=='Needs clarification' and not self.follow_up_questions:
             raise ValueError('Clarification requires follow-up questions.')
         return self
 
@@ -119,7 +142,8 @@ def validation_issues(error):
     allowed = {
         'summary', 'findings', 'follow_up_questions', 'kind', 'text', 'question',
         'answer', 'prepared_question_id', 'citations', 'id', 'line', 'quote',
-        'technology_review', 'status', 'feedback',
+        'technology_review', 'status', 'feedback', 'template_version', 'readiness',
+        'reason', 'alternatives', 'trade_offs',
     }
     return [
         {'type': e['type'], 'loc': [

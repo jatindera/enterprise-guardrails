@@ -14,7 +14,8 @@ from test_project_api import client,database,payload
 from test_gate_artifacts import Store
 
 BASE='/api/projects/3601/ea-review/meetings'
-TECH_REVIEW={'status':'Reviewed','feedback':'Advisory test analysis.'}
+TECH_REVIEW={'status':'Reviewed','feedback':'Advisory test analysis.', 'alternatives':[], 'trade_offs':[]}
+STANDARD={'template_version':'2.0','readiness':{'status':'Ready for human assessment','reason':'Supported advisory assessment is possible.'}}
 
 @pytest.fixture
 def setup(client,database,monkeypatch):
@@ -26,7 +27,7 @@ def setup(client,database,monkeypatch):
         data=json.loads(raw); calls.append(data)
         source=data['transcripts'][0]
         line=source['lines'][0]
-        return json.dumps({'technology_review':TECH_REVIEW,'summary':'Stakeholder-reported requirements and open points.',
+        return json.dumps({**STANDARD,'technology_review':TECH_REVIEW,'summary':'Stakeholder-reported requirements and open points.',
             'findings':[{'kind':'requirement','text':line['text'],'citations':[{'kind':'transcript',
                 'id':source['id'],'line':line['line']}]}], 'follow_up_questions':['Who confirms this requirement?']})
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
@@ -119,7 +120,7 @@ def test_storage_failure_pending_retry_and_cancel(client,database,setup):
 
 def test_invalid_citations_fail_without_creating_accepted_review(client,database,setup):
     m=create(client);upload(client,m)
-    client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({'technology_review':TECH_REVIEW,'summary':'Unsupported',
+    client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({**STANDARD,'technology_review':TECH_REVIEW,'summary':'Unsupported',
         'findings':[{'kind':'requirement','text':'Invented','citations':[{'kind':'transcript','id':str(uuid4()),'line':1}]}]})
     r=generate(client,m);assert r.status_code==502,r.text
     assert state(client,m)['reviews'][0]['status']=='Failed'
@@ -216,7 +217,7 @@ def test_unprepared_question_can_be_extracted_with_transcript_evidence(client,da
     m=create(client);upload(client,m,'Who owns support? Operations owns support.')
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'technology_review':TECH_REVIEW,'summary':'Support ownership was discussed.','findings':[{'kind':'question_answer',
+        return json.dumps({**STANDARD,'technology_review':TECH_REVIEW,'summary':'Support ownership was discussed.','findings':[{'kind':'question_answer',
             'text':'A question outside the prepared list was asked.','question':'Who owns support?',
             'answer':'Operations owns support.',
             'citations':[{'kind':'transcript','id':source['id'],'line':1}]}]})
@@ -384,7 +385,7 @@ def test_schema_error_is_visible_and_logged_without_sensitive_values(client,data
     import logging
     m=create(client);upload(client,m)
     secret='CONFIDENTIAL_VALUE_DO_NOT_LOG'
-    client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({
+    client.app.dependency_overrides[hosted_invoker]=lambda:lambda _:json.dumps({**STANDARD,'technology_review':TECH_REVIEW,
         'summary':'Summary','findings':[{'kind':secret,'text':'A requirement',
             'citations':[{'kind':'transcript','id':str(uuid4()),'line':1}]}],
         secret:'unexpected field'})
@@ -410,7 +411,7 @@ def test_citation_failure_shows_safe_source_location_without_quote(client,databa
     bad_quote='PRIVATE_MODEL_QUOTE_THAT_DOES_NOT_EXIST'
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'technology_review':TECH_REVIEW,'summary':'Unsupported statement.','findings':[{
+        return json.dumps({**STANDARD,'technology_review':TECH_REVIEW,'summary':'Unsupported statement.','findings':[{
             'kind':'requirement','text':'Unsupported statement.',
             'citations':[{'kind':'transcript','id':str(uuid4()) if unknown_source else source['id'],
                 'line':999}]}]})
@@ -444,7 +445,7 @@ def test_short_exact_quote_still_saves_review(client,database,setup):
     m=create(client);upload(client,m,'Header\nPriya: We will use synthetic data for the pilot.')
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'technology_review':TECH_REVIEW,'summary':'The pilot uses synthetic data.','findings':[{
+        return json.dumps({**STANDARD,'technology_review':TECH_REVIEW,'summary':'The pilot uses synthetic data.','findings':[{
             'kind':'requirement','text':'Use synthetic data for the pilot.',
             'citations':[{'kind':'transcript','id':source['id'],'line':2}]}]})
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
@@ -460,7 +461,7 @@ def test_backend_supplies_excerpt_from_long_original_line(client,database,setup)
     upload(client,m,'Header\n'+original,name='long-line.txt')
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'technology_review':TECH_REVIEW,'summary':'Recovery remains untested.','findings':[{
+        return json.dumps({**STANDARD,'technology_review':TECH_REVIEW,'summary':'Recovery remains untested.','findings':[{
             'kind':'open_item','text':'Recovery procedures require testing.',
             'citations':[{'kind':'transcript','id':source['id'],'line':2}]}]})
     client.app.dependency_overrides[hosted_invoker]=lambda:invoke
@@ -471,7 +472,7 @@ def test_backend_supplies_excerpt_from_long_original_line(client,database,setup)
         row=db.get(EAMeetingReview,UUID(response.json()['id']))
         cite=json.loads(row.ai_result)['findings'][0]['citations'][0]
         assert cite['quote']==original[:240] and cite['excerpt_truncated']
-        assert row.profile_version=='1.3.0'
+        assert row.profile_version=='2.0.0'
     assert accept(client,m,response.json()).status_code==200
 
 

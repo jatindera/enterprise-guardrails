@@ -9,6 +9,13 @@ from test_ea_preparation import setup_project
 from test_project_api import client, database
 
 
+@pytest.fixture(autouse=True)
+def explicit_web_test_mode(monkeypatch):
+    # Do not inherit a developer's Ollama mode from .env or the process.
+    # All inference/planning/search calls in route tests are dependency mocks.
+    monkeypatch.setenv('APP_EA_EXECUTION_MODE', 'hosted')
+
+
 @pytest.mark.parametrize('route',['chat','meeting-chat'])
 def test_unrelated_web_request_standard_reply_without_search(client,database,route):
     setup_project(client,database)

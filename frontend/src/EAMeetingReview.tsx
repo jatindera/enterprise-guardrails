@@ -205,7 +205,7 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
         onSave={() => void run(async()=>{await saveProposal();},"Saving proposal…")}/>
       <section className="content-panel"><div className="panel-heading"><h2>AI meeting review</h2><Badge>{revision?.status ?? "Not generated"}</Badge></div>
         <div className="workspace-panel-body">
-          <p>The AI drafts findings with source references. Reviewer edits are saved as new versions. Acceptance confirms the summary and does not approve the project.</p>
+          <p>New AI reviews use a standard seven-section template: project understanding, requirements and constraints, independent technology review, gaps and contradictions, follow-up questions, review readiness and evidence references. “Ready for human assessment” means sufficient information for architectural judgment, not completed testing or project approval. Reviewer edits are saved as new versions. Acceptance confirms the summary and does not approve the project.</p>
           <p className="workspace-secondary">Review context: minimal project intake, your saved proposed technology stack/rationale and all Ready transcripts listed in this workspace. Previous AI reviews and prepared questions are not sent. Attach all meeting transcripts you want included.</p>
           <div className="ea-review-toolbar"><Button appearance="primary" disabled={!editable || local.length > 0 || textDirty || !meeting.transcripts.some(f => f.status === "Ready") || meeting.transcripts.some(f => ["Pending", "Deleting"].includes(f.status))}
             onClick={() => void run(generate)}>{latest ? "Regenerate review" : "Review meeting with AI"}</Button>

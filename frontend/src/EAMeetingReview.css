@@ -48,3 +48,8 @@
 .ea-review-finding--resolved > strong { color: #116329; }
 .ea-review-editor { margin-top: 18px; }
 .ea-review-editor summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+
+.ea-review-readiness { padding: 12px 16px; border-left: 4px solid; border-radius: 4px; }
+.ea-review-readiness--attention { color: #a21b14; border-color: #b42318; background: #fff4f2; }
+.ea-review-readiness--ready { color: #075a9c; border-color: #176eb4; background: #e9f3ff; }
+.ea-review-reader h4 { margin: 18px 0 8px; font-size: 16px; }

@@ -76,8 +76,8 @@ def test_independent_review_can_require_more_questions(client,database,setup):
     assert save(client,m,['Azure'],'Human proposal, subject to review').status_code==200
     def invoke(raw):
         source=json.loads(raw)['transcripts'][0]
-        return json.dumps({'summary':'Hosting remains unclear.',
-            'technology_review':{'status':'Needs clarification','feedback':'Do not finalize Azure yet; clarify hosting constraints.'},
+        return json.dumps({'template_version':'2.0','readiness':{'status':'Needs clarification','reason':'Hosting constraints are missing.'},'summary':'Hosting remains unclear.',
+            'technology_review':{'status':'Needs clarification','feedback':'Do not finalize Azure yet; clarify hosting constraints.','alternatives':[],'trade_offs':[]},
             'findings':[{'kind':'open_item','text':'Hosting requirements are unclear.',
                 'citations':[{'kind':'transcript','id':source['id'],'line':1}]}],
             'follow_up_questions':['Which hosting constraints are mandatory?']})

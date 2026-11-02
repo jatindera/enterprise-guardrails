@@ -304,6 +304,9 @@ def numbered(text): return [{'line':i+1, 'text':line} for i,line in enumerate(te
 
 
 def render(result, labels):
+    if result.template_version == '2.0':
+        from .template import render_standard
+        return render_standard(result, labels)
     chunks = ['Consolidated meeting review', result.summary,
         'Source excerpts are copied by the application. The EA reviewer must confirm that each cited line supports its finding.']
     if result.technology_review:
@@ -396,7 +399,8 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
             item=finding.model_dump()
             item['citations']=citations
             findings.append(item)
-        result=ReviewResult.model_validate(dict(summary=referenced.summary,findings=findings,
+        result=ReviewResult.model_validate(dict(template_version=referenced.template_version,
+            readiness=referenced.readiness,summary=referenced.summary,findings=findings,
             technology_review=referenced.technology_review,follow_up_questions=referenced.follow_up_questions))
         stage='render'
         text=render(result,labels)

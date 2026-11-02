@@ -6,7 +6,8 @@ from pydantic import ValidationError
 from app.modules.ea_preparation import execution
 
 
-def test_hosted_default():
+def test_hosted_default(monkeypatch):
+    monkeypatch.delenv('APP_EA_EXECUTION_MODE', raising=False)
     assert execution.EAExecutionSettings(_env_file=None).execution_mode == 'hosted'
 
 
@@ -32,7 +33,8 @@ def test_dispatch_no_fallback(monkeypatch, mode):
     other.assert_not_called()
 
 
-@pytest.mark.parametrize('result', ['{"text":"answer"}', '', ' ', 'x' * 40001])
+@pytest.mark.parametrize('result', ['{"text":"answer"}', '', ' ', 'x' * 40001],
+    ids=['valid-answer', 'empty-answer', 'whitespace-answer', 'oversized-answer'])
 def test_local_lifecycle_and_output(monkeypatch, result):
     agent = MagicMock()
     agent.__aenter__ = AsyncMock(return_value=agent)
