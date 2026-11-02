@@ -1,0 +1,22 @@
+FICTIONAL TEST TRANSCRIPT — OPTIONAL SCOPE-CHANGE BRANCH
+Project: Supplier Certificate Renewal Tracker
+Demand: 5276
+Meeting 3: Newly proposed external supplier access
+Date: 10 November 2026 (fictional scenario)
+Participants: Nisha Verma (EA), Arjun Sood (Procurement owner), Meera Batra (Solution lead), Zoya Khan (Security reviewer).
+All identities and requirements are synthetic. No approval is recorded.
+
+[00:00] Arjun Sood (Procurement): Since our second meeting, a sponsor has asked whether 300 external supplier contacts could upload certificates directly. This is a requested scope change, not an approved replacement of the internal-only release.
+[00:25] Nisha Verma (EA): Do we know whether this must be included in release one?
+[00:35] Arjun Sood (Procurement): No. I need a sponsor decision on timing and funding. Please keep the last agreed first-release scope visible and separately assess the impact of this request.
+
+[01:00] Nisha Verma (EA): What identity and authorization requirements are known?
+[01:10] Zoya Khan (Security): Each supplier must be isolated from other suppliers' records and documents. We have not selected an external identity mechanism, onboarding process or account-recovery flow. Shared accounts and anonymous document uploads are not acceptable proposals for this test scenario.
+
+[01:45] Nisha Verma (EA): What about external-user licensing, document threats and support?
+[01:55] Meera Batra (Solution lead): We have not estimated licensing or support costs for external access. File size/type limits, malicious-file handling and upload-rate controls also need design work. The earlier internal-only option cannot be assumed to cover these requirements without reassessment.
+
+[02:30] Arjun Sood (Procurement): We also do not know how supplier contacts will be verified or removed when their employment changes. No one has accepted ownership of that process yet.
+
+[02:55] Nisha Verma (EA): These are open questions. The earlier seven-year design retention requirement and internal workflow needs have not changed. External access is a new proposal, not evidence that the preceding review was wrong at the time.
+[03:20] Zoya Khan (Security): Please ask for the release-scope decision, identity lifecycle owner, supplier isolation approach, upload controls and cost assessment. We are not approving this expansion.

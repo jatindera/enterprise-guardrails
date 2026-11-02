@@ -12,3 +12,7 @@ design of diagram should be suggested.
 
 RAI and Security agent
 local/azure deployment, same pattern as EA, Policies of DuPont in security and RAI docs?
+
+Remove tech stack from the EA assessment last tab.
+
+create dummy data for a project and test EA assessement end to end.

@@ -1,0 +1,47 @@
+FICTIONAL TEST TRANSCRIPT — NOT A REAL MEETING OR APPROVAL
+Project: Supplier Certificate Renewal Tracker
+Demand: 5276
+Meeting 1: Initial discovery
+Date: 3 November 2026 (fictional scenario)
+Participants are invented: Nisha Verma (EA), Arjun Sood (Procurement owner), Meera Batra (Solution lead), Zoya Khan (Security reviewer), Victor Chen (Operations), Elena Brooks (Records coordinator).
+All requirements and commitments are synthetic stakeholder statements, not verified policies or implemented controls.
+
+[00:00] Nisha Verma (EA): What business problem must this application solve?
+[00:10] Arjun Sood (Procurement): We miss certificate renewals because spreadsheet rows, documents and email reminders have different owners. We need a register, expiry reminders and a history of changes. People will still read the certificates and decide what action to take.
+
+[00:45] Nisha Verma (EA): What volumes and user groups are in scope?
+[00:55] Arjun Sood (Procurement): Our estimate is 1,200 supplier records, about 200 certificate updates each month and 40 internal users. We have not measured concurrent use. We have not decided whether suppliers need direct access in the first release.
+
+[01:30] Nisha Verma (EA): Is AI document interpretation, forecasting or large-scale analytics required?
+[01:40] Meera Batra (Solution lead): No stakeholder has requested those features. Our stated needs are forms, attachments, filtered lists, reminders and status history. We should not add an AI feature merely because it is available.
+
+[02:10] Nisha Verma (EA): What do users enter or upload?
+[02:20] Arjun Sood (Procurement): Supplier identifiers, certificate type, expiry date, owner and review status. Documents may contain contact names and business email addresses. We have not completed the field-level inventory, so other document content is unknown.
+
+[02:55] Nisha Verma (EA): Does the tracker approve a supplier or certify regulatory compliance?
+[03:05] Arjun Sood (Procurement): No. It tracks documents and reminders. A human procurement reviewer checks the document and records the business outcome. The application must not label a supplier legally compliant just because a file is present.
+
+[03:35] Nisha Verma (EA): Do we need mobile or offline operation?
+[03:45] Meera Batra (Solution lead): Someone requested phone access, but I do not know whether they meant a browser in the office or offline work. We have not agreed a mandatory offline requirement.
+
+[04:10] Nisha Verma (EA): What retention period applies?
+[04:20] Arjun Sood (Procurement): An early working spreadsheet says five years after the supplier relationship ends. I cannot confirm where that number came from.
+[04:40] Elena Brooks (Records): My draft requirement says seven years after the relationship ends. I have not reconciled it with Arjun's spreadsheet. Neither figure should be called an approved company policy on the basis of this call.
+
+[05:10] Nisha Verma (EA): What authentication and access restrictions are needed?
+[05:20] Zoya Khan (Security): We need an agreed distinction between document owners, ordinary viewers and administrators. External supplier access, if included, changes that design. We have not defined the access groups or completed a privacy review.
+
+[05:55] Nisha Verma (EA): What integrations are required?
+[06:05] Meera Batra (Solution lead): We need the supplier identifier to be consistent with the supplier master. We have not decided whether a manual reference list is sufficient or whether an automated interface is required. Writing changes back to the supplier master has not been requested.
+
+[06:40] Nisha Verma (EA): What are the availability, recovery and support expectations?
+[06:50] Victor Chen (Operations): Those are not agreed yet. My team needs to know whether people depend on this at night and what happens if reminders stop. There is no agreed support commitment or tested recovery target.
+
+[07:20] Nisha Verma (EA): Is existing licensing enough for a particular platform?
+[07:30] Meera Batra (Solution lead): We have a Microsoft 365 environment, but I have not checked the proposed application's licensing, connectors, storage or identity requirements. An existing subscription is not proof that a new design has no additional cost.
+
+[08:00] Nisha Verma (EA): What evidence would justify moving beyond the pilot?
+[08:10] Arjun Sood (Procurement): Reliable reminders, clear ownership and less manual follow-up. We still need measurable acceptance criteria and a pilot scope. There is no final platform decision.
+
+[08:40] Nisha Verma (EA): We need another discussion on external access, offline use, retention, data inventory, supplier-master integration, support and licensing. No deadlines for those answers were agreed today.
+[09:00] Zoya Khan (Security): No Security or EA approval was granted. The discussion records requirements and open questions only.

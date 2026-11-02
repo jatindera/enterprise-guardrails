@@ -1,0 +1,46 @@
+FICTIONAL TEST TRANSCRIPT — NOT A REAL MEETING OR APPROVAL
+Project: Supplier Certificate Renewal Tracker
+Demand: 5276
+Meeting 2: Clarifying the first-release requirements
+Date: 6 November 2026 (fictional scenario)
+Participants: Nisha Verma (EA), Arjun Sood (Procurement owner), Meera Batra (Solution lead), Zoya Khan (Security reviewer), Victor Chen (Operations), Elena Brooks (Records coordinator).
+These are synthetic stakeholder statements. Design intentions and document descriptions are not evidence of implementation or verified company policy.
+
+[00:00] Nisha Verma (EA): We are answering the open questions from our first meeting. What is the agreed first-release user scope?
+[00:10] Arjun Sood (Procurement): Forty internal users only. Suppliers will not sign in or upload files directly. External access is explicitly outside the first release. Coordinators will receive files through the existing process and upload them manually.
+
+[00:40] Nisha Verma (EA): Is offline operation mandatory?
+[00:50] Arjun Sood (Procurement): No. The first release is an online browser application for office use. Phone-friendly pages are useful, but offline editing and disconnected document synchronization are out of scope.
+
+[01:20] Nisha Verma (EA): Have we settled the application volume assumptions?
+[01:30] Meera Batra (Solution lead): We retain the estimate of 1,200 suppliers and 200 certificate updates per month. The pilot will cover 100 suppliers and ten users. We will load representative records for a test with ten concurrent users, including filtered searches and reminder processing.
+
+[02:00] Nisha Verma (EA): What data will be held?
+[02:10] Meera Batra (Solution lead): Supplier ID, certificate type, expiry date, coordinator, reviewer, review status and a link to the document. We have reviewed our synthetic sample documents and found business contact names and business email addresses. Payment details and identity-document copies are excluded; coordinators must flag unexpected sensitive content for review.
+
+[02:45] Nisha Verma (EA): Please reconcile the two retention figures.
+[02:55] Elena Brooks (Records): For this fictional project, Arjun and I now agree the design requirement is seven years after the supplier relationship ends. The five-year entry in the working spreadsheet was a superseded draft. I will provide the written records requirement before implementation. A legal hold must prevent deletion until an authorized records reviewer releases it.
+[03:25] Arjun Sood (Procurement): I confirm that the five-year draft should not be carried forward as an unresolved business requirement. We agree seven years for the proposed design, subject to the written requirement Elena mentioned.
+
+[03:55] Nisha Verma (EA): What access model do you propose?
+[04:05] Zoya Khan (Security): Use the organization's existing employee sign-in service for internal users. Coordinators may add and update records; procurement reviewers record review outcomes; administrators manage configuration. Group membership must govern access to documents as well as screens. No anonymous links or external guest accounts are in the first-release scope.
+[04:35] Meera Batra (Solution lead): We will demonstrate those roles with synthetic accounts in the pilot. We have not yet performed the negative-access tests, so this is a design requirement rather than a verified implemented control.
+
+[05:00] Nisha Verma (EA): What was decided about supplier-master integration?
+[05:10] Meera Batra (Solution lead): A coordinator will refresh a supplier reference CSV manually each month using an existing authorized export. The application is read-only with respect to the supplier master. There is no runtime interface or write-back in release one. Automated synchronization can be considered as a separate future change.
+
+[05:45] Nisha Verma (EA): How should reminders and audit information work?
+[05:55] Arjun Sood (Procurement): Send the document owner reminders at 30, 14 and 7 days before expiry, with a daily overdue digest to the coordinator. Avoid sending the same reminder twice. Record who changed an expiry date or review status and when, so errors can be investigated.
+
+[06:25] Nisha Verma (EA): What are the operating and recovery requirements?
+[06:35] Victor Chen (Operations): Support will be during business hours, Monday to Friday. If the application is unavailable, coordinators can use a controlled manual tracker for one business day. Our proposed recovery objectives are restoration within one business day and no more than one day's lost changes. The delivery team must demonstrate the backup/restore and failed-reminder recovery procedures; none have been tested yet.
+
+[07:15] Nisha Verma (EA): What pilot acceptance criteria have been agreed?
+[07:25] Arjun Sood (Procurement): For 100 suppliers, all scheduled test reminders must arrive within one business day of their intended time, without duplicates. Representative filtered pages should return within three seconds for ten concurrent test users. A coordinator must be able to find the owner and latest document without searching an email mailbox. We will measure follow-up time to evaluate the proposed reduction from twenty to five minutes; those figures are not yet verified results.
+
+[08:10] Nisha Verma (EA): Have we selected a platform or established that licensing is free?
+[08:20] Meera Batra (Solution lead): No. We want the architecture review to compare a proportionate low-code workflow using Power Apps, Power Automate and Microsoft 365/SharePoint with a small custom application where appropriate. That is an option to assess, not a final decision or a claim of supported behavior. Identity, document access, history, retention, query performance, licensing, connector use and recovery need validation for whichever option is chosen.
+[08:55] Victor Chen (Operations): We can name an application support owner now: my operations team will own first-line triage, and Meera's team will own application changes. Licensing estimates, written retention requirements and tested runbooks remain delivery evidence to obtain, not completed work.
+
+[09:25] Nisha Verma (EA): The first-release requirements are clearer. The application remains a workflow and document register; no generative AI, forecasting, large-scale analytical processing or autonomous supplier approval has been requested.
+[09:45] Zoya Khan (Security): Human reviewers still need to assess the proposed design and evidence. This meeting does not grant EA, Security or production approval.
