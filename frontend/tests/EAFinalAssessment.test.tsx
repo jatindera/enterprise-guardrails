@@ -1,99 +1,159 @@
 // @vitest-environment jsdom
-import {afterEach,beforeEach,expect,it,vi} from "vitest";
-import {cleanup,fireEvent,render,screen} from "@testing-library/react";
-import EAApprovalReport from "../src/EAApprovalReport";
-import EAAssessment from "../src/EAAssessment";
-import {ProjectUpdateContext} from "../src/ProjectUpdates";
-import type {AcceptedMeetingReview,Project} from "../src/types";
-vi.mock("../src/ArchitectureDiagrams",()=>({default:()=> <section>Existing architecture diagrams</section>}));
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import EAApprovalReport from '../src/EAApprovalReport';
+import EAAssessment from '../src/EAAssessment';
+import {ProjectUpdateContext} from '../src/ProjectUpdates';
+import * as api from '../src/api/eaHumanReviews';
+import type {HumanReview,HumanState} from '../src/api/eaHumanReviews';
+import type {AcceptedMeetingReview,Project} from '../src/types';
+vi.mock('../src/ArchitectureDiagrams',()=>({default:()=> <section>Existing architecture diagrams</section>}));
+vi.mock('../src/api/eaHumanReviews',async importOriginal=>{
+  const actual=await importOriginal<typeof api>();
+  return {...actual,getHumanReview:vi.fn(),getHumanVersion:vi.fn(),createHumanReview:vi.fn(),saveHumanReview:vi.fn(),submitHumanReview:vi.fn(),reopenHumanReview:vi.fn()};
+});
+const project={demandId:'5276',name:'Supplier tracker',assignedEA:'ea@example.test',eaComplexity:'High',eaStatus:'Approved'} as Project;
+const accepted:AcceptedMeetingReview={id:'ai-1',version:2,text:'Accepted AI evidence',acceptedAt:'2026-11-02T05:00:00Z'};
+const props={project,canClose:true,items:[],currentDiagram:null,acceptedReview:accepted};
+let db:HumanState;
+function review():HumanReview {return {id:'human-1',version:1,revision:1,status:'Draft',sourceReviewId:'ai-1',parentReviewId:null,
+  reviewText:accepted.text,technologyStack:'Power Apps',technologyRationale:'Internal workflow',complexity:null,decision:null,decisionRationale:'',conditions:'',
+  createdAt:'2026-11-02T06:00:00Z',updatedAt:'2026-11-02T06:00:00Z',createdBy:'Primary EA',updatedBy:'Primary EA',submittedAt:null,submittedBy:null};}
+function existing(row=review()) {db.currentReview=row;db.history=[row];db.canSubmit=true;}
+function ready() {existing({...review(),complexity:'Low',decision:'Approved',decisionRationale:'Scope and design accepted'});}
+function button(name:string){return screen.getByRole('button',{name,exact:true}) as HTMLButtonElement;}
+async function loaded(){await waitFor(()=>expect(screen.queryByText('Loading saved human review…')).toBeNull());}
+function value(){return (screen.getByLabelText('Final assessment text') as HTMLTextAreaElement).value;}
+function edit(text='Human final wording'){fireEvent.change(screen.getByLabelText('Final assessment text'),{target:{value:text}});}
+function deferred<T>() {let resolve!:(value:T)=>void;const promise=new Promise<T>(r=>resolve=r);return {promise,resolve};}
 beforeEach(()=>{
-  vi.stubGlobal('ResizeObserver',class {observe(){} unobserve(){} disconnect(){}});
+  vi.clearAllMocks();
+  vi.stubGlobal('ResizeObserver',class{observe(){}unobserve(){}disconnect(){}});
+  db={projectRevision:7,eaStatus:'Pending',eaComplexity:'Not assessed',canEdit:true,canSubmit:false,canReopen:false,
+    currentReview:null,sourceChanged:false,sourceReview:{id:'ai-1',text:accepted.text,version:2,status:'Accepted',acceptedAt:accepted.acceptedAt,acceptedBy:'EA',
+      createdAt:accepted.acceptedAt,createdBy:'EA',parentReviewId:null,basisReviewId:null,canRecover:false},history:[],events:[]};
+  vi.mocked(api.getHumanReview).mockImplementation(async()=>structuredClone(db));
+  vi.mocked(api.createHumanReview).mockImplementation(async()=>{existing();return structuredClone(db.currentReview!);});
+  vi.mocked(api.saveHumanReview).mockImplementation(async(_d,_id,_request,body)=>{
+    const {expectedRevision,...fields}=body;
+    existing({...db.currentReview!,...fields,revision:expectedRevision+1});return structuredClone(db.currentReview!);
+  });
+  vi.mocked(api.submitHumanReview).mockImplementation(async()=>{
+    existing({...db.currentReview!,status:'Submitted',revision:db.currentReview!.revision+1,submittedAt:'2026-11-03T05:00:00Z',submittedBy:'Primary EA'});
+    db.canEdit=false;db.canSubmit=false;db.canReopen=true;db.eaStatus=db.currentReview!.decision!;db.eaComplexity=db.currentReview!.complexity!;db.projectRevision++;
+    return structuredClone(db.currentReview!);
+  });
+  vi.mocked(api.reopenHumanReview).mockImplementation(async(_d,_id,_request,_revision,_project,reason)=>{
+    const submitted=structuredClone(db.currentReview!);const next={...submitted,id:'human-2',version:2,revision:1,status:'Draft' as const,parentReviewId:submitted.id,submittedAt:null,submittedBy:null};
+    existing(next);db.history=[submitted,next];db.events=[{id:'event',reviewId:next.id,revision:1,action:'Reopen',reason,createdAt:next.createdAt,createdBy:'Admin'}];
+    db.canEdit=true;db.canReopen=false;db.eaStatus='Pending';db.eaComplexity='Not assessed';db.projectRevision++;return next;
+  });
 });
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
-const project={demandId:"5276",name:"Supplier tracker",assignedEA:"ea@example.test",eaComplexity:"High",eaStatus:"Approved"} as Project;
-const accepted:AcceptedMeetingReview={id:"review-1",version:2,text:"Consolidated meeting review\n\nHuman-readable accepted evidence.",acceptedAt:"2026-11-02T05:00:00Z",
-  proposal:{technologies:["Power Apps","Power Automate"],rationale:"Internal workflow proposal"}};
-const props={project,canClose:true,items:[],currentDiagram:null,acceptedReview:accepted};
-function create(){fireEvent.click(screen.getByRole("button",{name:"Create human final review from AI review"}));}
-it("requires an accepted source and keeps the source readable for viewers",()=>{
-  const view=render(<EAApprovalReport {...props} acceptedReview={null}/>);
-  expect((screen.getByRole("button",{name:"Create human final review from AI review"}) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.queryByLabelText("Final assessment text")).toBeNull();
-  view.rerender(<EAApprovalReport {...props} canClose={false} readOnly/>);
-  expect(screen.getByText("Read AI source review (read-only)")).toBeTruthy();
-  expect((screen.getByRole("button",{name:"Create human final review from AI review"}) as HTMLButtonElement).disabled).toBe(true);
+it('requires a source and enforces backend permission as well as the current UI role',async()=>{
+  const view=render(<EAApprovalReport {...props} acceptedReview={null}/>);await loaded();
+  expect(button('Create human final review from AI review').disabled).toBe(true);
+  db.canEdit=false;view.rerender(<EAApprovalReport {...props} canClose={false}/>);await screen.findByText('Read AI source review (read-only)');
+  expect(button('Create human final review from AI review').disabled).toBe(true);
 });
-it("copies once with a compact stack and keeps complexity/decision human-selected",()=>{
-  const update=vi.fn();
-  render(<ProjectUpdateContext.Provider value={update}><EAApprovalReport {...props}/></ProjectUpdateContext.Provider>);
-  create();
-  expect((screen.getByLabelText("Final technology stack") as HTMLTextAreaElement).value).toBe("Power Apps, Power Automate");
-  expect((screen.getByLabelText("Final technology rationale") as HTMLTextAreaElement).value).toBe("Internal workflow proposal");
-  expect((screen.getByLabelText("Final assessment text") as HTMLTextAreaElement).value).toBe(accepted.text);
-  expect((screen.getByLabelText("Human EA complexity") as HTMLSelectElement).value).toBe("");
-  expect((screen.getByLabelText("Human EA decision") as HTMLSelectElement).value).toBe("");
-  fireEvent.change(screen.getByLabelText("Final assessment text"),{target:{value:"Human final wording"}});
-  fireEvent.change(screen.getByLabelText("Human EA complexity"),{target:{value:"Low"}});
-  fireEvent.change(screen.getByLabelText("Human EA decision"),{target:{value:"Conditional approval"}});
-  fireEvent.click(screen.getByRole("button",{name:"Save human review locally"}));
-  expect(screen.getByText("Local draft snapshots (1)")).toBeTruthy();
-  expect((screen.getByRole("button",{name:"Submit final EA decision"}) as HTMLButtonElement).disabled).toBe(true);
-  expect(update).not.toHaveBeenCalled();
-  expect(accepted.text).toContain("Human-readable accepted evidence");
+it('creates a DB copy once and never writes on typing; saves all fields with its revision',async()=>{
+  render(<EAApprovalReport {...props}/>);await loaded();fireEvent.click(button('Create human final review from AI review'));
+  await screen.findByLabelText('Final assessment text');
+  expect(api.createHumanReview).toHaveBeenCalledWith('5276',expect.any(String),{sourceReviewId:'ai-1',expectedProjectRevision:7});
+  expect(value()).toBe(accepted.text);expect((screen.getByLabelText('Human EA complexity') as HTMLSelectElement).value).toBe('');
+  edit();fireEvent.change(screen.getByLabelText('Final technology stack'),{target:{value:'Azure SQL'}});
+  expect(api.saveHumanReview).not.toHaveBeenCalled();
+  fireEvent.click(button('Save draft'));await screen.findByText('Human review draft saved to the database.');
+  expect(api.saveHumanReview).toHaveBeenCalledTimes(1);
+  expect(api.saveHumanReview).toHaveBeenCalledWith('5276','human-1',expect.any(String),expect.objectContaining({reviewText:'Human final wording',technologyStack:'Azure SQL',expectedRevision:1}));
+  expect(accepted.text).toBe('Accepted AI evidence');
 });
-it("preserves human edits across accepted-source changes and reopening",()=>{
-  const view=render(<EAApprovalReport {...props}/>);create();
-  fireEvent.change(screen.getByLabelText("Final assessment text"),{target:{value:"Keep my analysis"}});
-  const newer={...accepted,id:"review-2",version:3,text:"New accepted evidence"};
-  view.rerender(<EAApprovalReport {...props} acceptedReview={newer}/>);
-  expect(screen.getByText(/Your human draft has been preserved/)).toBeTruthy();
-  expect((screen.getByLabelText("Final assessment text") as HTMLTextAreaElement).value).toBe("Keep my analysis");
-  view.rerender(<EAApprovalReport {...props} acceptedReview={null}/>);
-  expect((screen.getByLabelText("Final assessment text") as HTMLTextAreaElement).value).toBe("Keep my analysis");
-  expect(screen.getByText("Read the source copied into this draft")).toBeTruthy();
+it('restores saved reviews after unmount and remount',async()=>{
+  existing();const view=render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');edit('Persisted human text');
+  fireEvent.click(button('Save draft'));await screen.findByText('Human review draft saved to the database.');view.unmount();
+  render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');expect(value()).toBe('Persisted human text');
+  expect(button('Save draft').disabled).toBe(true);
 });
-it("requires explicit confirmation to replace a draft and retains saved snapshots",()=>{
-  const view=render(<EAApprovalReport {...props}/>);create();
-  fireEvent.change(screen.getByLabelText("Final assessment text"),{target:{value:"Human edits"}});
-  fireEvent.click(screen.getByRole("button",{name:"Save human review locally"}));
-  view.rerender(<EAApprovalReport {...props} acceptedReview={{...accepted,id:"new-review",text:"New accepted wording"}}/>);
-  fireEvent.click(screen.getByRole("button",{name:"Replace draft from accepted review"}));
-  fireEvent.click(screen.getByRole("button",{name:"Keep my draft"}));
-  expect((screen.getByLabelText("Final assessment text") as HTMLTextAreaElement).value).toBe("Human edits");
-  fireEvent.click(screen.getByRole("button",{name:"Replace draft from accepted review"}));
-  fireEvent.click(screen.getByRole("button",{name:"Replace draft",exact:true}));
-  expect((screen.getByLabelText("Final assessment text") as HTMLTextAreaElement).value).toBe("New accepted wording");
-  expect(screen.getByText("Local draft snapshots (1)")).toBeTruthy();
+it('submits unchanged AI text only after confirmation and updates portfolio from server state',async()=>{
+  ready();const update=vi.fn();render(<ProjectUpdateContext.Provider value={update}><EAApprovalReport {...props}/></ProjectUpdateContext.Provider>);
+  await screen.findByLabelText('Final assessment text');fireEvent.click(button('Submit final EA decision'));
+  expect(api.submitHumanReview).not.toHaveBeenCalled();fireEvent.click(button('Cancel'));expect(api.submitHumanReview).not.toHaveBeenCalled();
+  fireEvent.click(button('Submit final EA decision'));fireEvent.click(button('Confirm final submission'));
+  await screen.findByText('Submitted human final review');expect(api.submitHumanReview).toHaveBeenCalledWith('5276','human-1',expect.any(String),1,7);
+  expect(value()).toBe(accepted.text);expect(button('Save draft').disabled).toBe(true);
+  expect((screen.getByLabelText('Final assessment text').closest('fieldset') as HTMLFieldSetElement).disabled).toBe(true);
+  expect(update).toHaveBeenLastCalledWith('5276',expect.objectContaining({eaStatus:'Approved',eaComplexity:'Low',revision:8}));
 });
-it("locks draft editing when primary EA permission is lost",()=>{
-  const view=render(<EAApprovalReport {...props}/>);create();
-  view.rerender(<EAApprovalReport {...props} canClose={false}/>);
-  const text=screen.getByLabelText("Final assessment text") as HTMLTextAreaElement;
-  expect((text.closest('fieldset') as HTMLFieldSetElement).disabled).toBe(true);
-  fireEvent.change(text,{target:{value:"Unauthorized edit"}});
-  expect(text.value).toBe(accepted.text);
-  expect((screen.getByRole("button",{name:"Save human review locally"}) as HTMLButtonElement).disabled).toBe(true);
+it('requires saving edits and decision-specific required fields before submission',async()=>{
+  ready();render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');
+  edit();expect(button('Submit final EA decision').disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Human EA decision'),{target:{value:'Conditional approval'}});
+  fireEvent.click(button('Save draft'));await screen.findByText('Human review draft saved to the database.');
+  expect(button('Submit final EA decision').disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Human EA conditions'),{target:{value:'Provide named support owner'}});
+  fireEvent.click(button('Save draft'));await waitFor(()=>expect(button('Submit final EA decision').disabled).toBe(false));
 });
-it("removes the duplicate technology checkbox panel and retains existing diagram and items sections",()=>{
+it('keeps unsaved edits when sources change and requires confirmation for replacement',async()=>{
+  existing();const view=render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');edit('Keep my human analysis');
+  db.sourceChanged=true;db.canSubmit=false;
+  view.rerender(<EAApprovalReport {...props} acceptedReview={{...accepted,id:'ai-2',text:'New AI evidence'}}/>);
+  await screen.findByText(/Your human review has been preserved/);expect(value()).toBe('Keep my human analysis');
+  expect(button('Submit final EA decision').disabled).toBe(true);
+  fireEvent.click(button('Replace draft from accepted review'));fireEvent.click(button('Cancel'));expect(api.createHumanReview).not.toHaveBeenCalled();
+  db.sourceChanged=false;vi.mocked(api.createHumanReview).mockImplementationOnce(async()=>{existing({...review(),id:'replacement',version:2,sourceReviewId:'ai-2',reviewText:'New AI evidence'});return db.currentReview!;});
+  fireEvent.click(button('Replace draft from accepted review'));fireEvent.click(button('Replace draft'));
+  await waitFor(()=>expect(value()).toBe('New AI evidence'));
+  expect(api.createHumanReview).toHaveBeenCalledWith('5276',expect.any(String),expect.objectContaining({sourceReviewId:'ai-2',replaceDraft:true,expectedCurrentReviewId:'human-1',expectedCurrentRevision:1}));
+});
+it('preserves edits on a 409 and requires explicit discard before reloading',async()=>{
+  existing();render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');edit('My conflicting edit');
+  vi.mocked(api.saveHumanReview).mockRejectedValueOnce(Object.assign(new Error('Review changed'),{status:409}));
+  fireEvent.click(button('Save draft'));await screen.findByText(/Your edits are preserved/);expect(value()).toBe('My conflicting edit');
+  expect(button('Save draft').disabled).toBe(true);fireEvent.click(button('Reload saved review'));fireEvent.click(button('Cancel'));expect(value()).toBe('My conflicting edit');
+  db.currentReview!.reviewText='Other editor saved';db.currentReview!.revision++;
+  fireEvent.click(button('Reload saved review'));fireEvent.click(button('Discard edits and reload'));await waitFor(()=>expect(value()).toBe('Other editor saved'));
+});
+it('retains draft on API denial and disables further writes',async()=>{
+  existing();render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');edit('Keep denied work');
+  vi.mocked(api.saveHumanReview).mockRejectedValueOnce(Object.assign(new Error('Only primary EA or Admin'),{status:403}));
+  fireEvent.click(button('Save draft'));await screen.findByText('Only primary EA or Admin');expect(value()).toBe('Keep denied work');expect(button('Save draft').disabled).toBe(true);
+});
+it('reopens with a nonblank reason and displays saved versions and snapshots',async()=>{
+  ready();await api.submitHumanReview('5276','human-1','request',1,7);vi.mocked(api.submitHumanReview).mockClear();
+  render(<EAApprovalReport {...props}/>);await screen.findByText('Submitted human final review');fireEvent.click(button('Reopen human review'));
+  expect(button('Confirm reopen').disabled).toBe(true);fireEvent.change(screen.getByLabelText('Human review reopen reason'),{target:{value:'  New scope  '}});
+  fireEvent.click(button('Confirm reopen'));await screen.findByText('Editable human final review');
+  expect(api.reopenHumanReview).toHaveBeenCalledWith('5276','human-1',expect.any(String),2,8,'New scope');
+  expect(db.history[0].status).toBe('Submitted');expect(db.eaStatus).toBe('Pending');expect(screen.getByText('Saved human review history (2)')).toBeTruthy();
+  vi.mocked(api.getHumanVersion).mockResolvedValueOnce({review:db.history[0],snapshots:[{id:'snapshot',action:'Submit',reason:null,recordedAt:db.history[0].createdAt,recordedBy:'Primary EA',review:db.history[0]}]});
+  fireEvent.click(button('View version 1'));await screen.findByRole('region',{name:'Human review history (read-only)'});
+  expect(api.getHumanVersion).toHaveBeenCalledWith('5276','human-1');expect(screen.getByText(/Reopen by Admin: New scope/)).toBeTruthy();
+});
+it('prevents double save while a request is in flight',async()=>{
+  existing();render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');edit();
+  const pending=deferred<HumanReview>();vi.mocked(api.saveHumanReview).mockReturnValueOnce(pending.promise);
+  fireEvent.click(button('Save draft'));fireEvent.click(button('Save draft'));expect(api.saveHumanReview).toHaveBeenCalledTimes(1);
+  pending.resolve(db.currentReview!);await screen.findByText('Human review draft saved to the database.');
+});
+it('reports a successful save followed by refresh failure without losing saved text',async()=>{
+  existing();render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');edit('Definitely saved');
+  vi.mocked(api.getHumanReview).mockRejectedValueOnce(new Error('Network unavailable'));
+  fireEvent.click(button('Save draft'));await screen.findByText(/The operation succeeded/);expect(value()).toBe('Definitely saved');expect(button('Submit final EA decision').disabled).toBe(true);
+});
+it('blocks initial load failures and can recover by reloading',async()=>{
+  vi.mocked(api.getHumanReview).mockRejectedValueOnce(new Error('API unavailable'));render(<EAApprovalReport {...props}/>);
+  await screen.findByText('API unavailable');expect(button('Create human final review from AI review').disabled).toBe(true);
+  fireEvent.click(button('Reload saved review'));await screen.findByText('Loaded the latest saved human review.');expect(button('Create human final review from AI review').disabled).toBe(false);
+});
+it('does not let a late response for another demand replace the new editor',async()=>{
+  const pending=deferred<HumanState>();vi.mocked(api.getHumanReview).mockReturnValueOnce(pending.promise);
+  const view=render(<EAApprovalReport {...props}/>);
+  existing({...review(),reviewText:'Second demand saved'});view.rerender(<EAApprovalReport {...props} project={{...project,demandId:'9999'}}/>);
+  await screen.findByLabelText('Final assessment text');pending.resolve({...db,currentReview:{...review(),reviewText:'Old demand response'}});
+  await waitFor(()=>expect(value()).toBe('Second demand saved'));
+});
+it('keeps human review above diagrams and removes the duplicate stack panel',async()=>{
   render(<ProjectUpdateContext.Provider value={vi.fn()}><EAAssessment project={project} acceptedReview={accepted} canClose onOpenReviewSession={()=>{}}/></ProjectUpdateContext.Provider>);
-  expect(screen.queryByRole("heading",{name:"Solution technology stack"})).toBeNull();
-  expect(screen.queryByRole("checkbox")).toBeNull();
-  expect(screen.getByText("Existing architecture diagrams")).toBeTruthy();
-  expect(screen.getByRole("heading",{name:"EA requirements & pending items"})).toBeTruthy();
-  expect(screen.getByRole("heading",{name:"Human EA final review"})).toBeTruthy();
-});
-
-
-it("saves an unchanged AI copy as a separate human draft",()=>{
-  render(<EAApprovalReport {...props}/>);create();
-  fireEvent.click(screen.getByRole("button",{name:"Save human review locally"}));
-  expect(screen.getByText("Local draft snapshots (1)")).toBeTruthy();
-  expect((screen.getByLabelText("Final assessment text") as HTMLTextAreaElement).value).toBe(accepted.text);
-});
-
-it("places the human final review before the diagram section",()=>{
-  render(<ProjectUpdateContext.Provider value={vi.fn()}><EAAssessment project={project} acceptedReview={accepted} canClose onOpenReviewSession={()=>{}}/></ProjectUpdateContext.Provider>);
-  const review=screen.getByRole("region",{name:"Human EA final assessment"});
-  const diagram=screen.getByText("Existing architecture diagrams");
-  expect(review.compareDocumentPosition(diagram) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await loaded();expect(screen.queryByRole('heading',{name:'Solution technology stack'})).toBeNull();
+  expect(screen.getByRole('region',{name:'Human EA final assessment'}).compareDocumentPosition(screen.getByText('Existing architecture diagrams')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

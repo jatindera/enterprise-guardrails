@@ -159,3 +159,11 @@ it("restores persisted production status into the portfolio stage", () => {
   expect(project.stage).toBe("Production");
   expect(project.goLiveDate).toBe("2026-10-29");
 });
+
+it('restores database EA decisions and complexity rather than stale local portfolio values',()=>{
+  const existing=projectFromApi(record);existing.eaStatus='Approved';existing.eaComplexity='High';
+  const pending=projectFromApi({...record,eaStatus:'Pending',eaComplexity:'Not assessed'},existing);
+  expect(pending.eaStatus).toBe('Pending');expect(pending.eaComplexity).toBe('Not assessed');
+  const conditional=projectFromApi({...record,eaStatus:'Conditional approval',eaComplexity:'Medium'},existing);
+  expect(conditional.eaStatus).toBe('Conditional');expect(conditional.eaComplexity).toBe('Medium');
+});

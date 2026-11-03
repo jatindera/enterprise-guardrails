@@ -84,6 +84,9 @@ class Project(Base):
         Unicode(320), nullable=False, default="Chris Cawthon", server_default="Chris Cawthon",
     )
 
+    ea_status: Mapped[str] = mapped_column(Unicode(32), nullable=False, default="Pending", server_default="Pending")
+    ea_complexity: Mapped[str] = mapped_column(Unicode(16), nullable=False, default="Not assessed", server_default="Not assessed")
+
     production_status: Mapped[str] = mapped_column(Unicode(20), nullable=False, default="Not deployed", server_default="Not deployed")
     go_live_date: Mapped[date | None] = mapped_column(nullable=True)
     production_comments: Mapped[str] = mapped_column(Unicode(4000), nullable=False, default="", server_default="")
@@ -444,3 +447,51 @@ class EAReviewReopenEvent(Base):
     created_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
     created_by_name: Mapped[str] = mapped_column(Unicode(200), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)
+
+
+class EAHumanReview(Base):
+    __tablename__ = 'ea_human_reviews'
+    __table_args__ = (UniqueConstraint('project_id', 'version'),
+        CheckConstraint("status IN ('Draft','Submitted','Superseded')", name='human_review_status'))
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey('projects.id'), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(nullable=False)
+    revision: Mapped[int] = mapped_column(nullable=False, default=1)
+    status: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    source_review_id: Mapped[UUID] = mapped_column(ForeignKey('ea_meeting_reviews.id'), nullable=False)
+    source_input_digest: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    source_text_sha256: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    parent_review_id: Mapped[UUID | None] = mapped_column(ForeignKey('ea_human_reviews.id'), nullable=True)
+    review_text: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+    technology_stack: Mapped[str] = mapped_column(Unicode(2000), nullable=False, default='')
+    technology_rationale: Mapped[str] = mapped_column(Unicode(4000), nullable=False, default='')
+    complexity: Mapped[str | None] = mapped_column(Unicode(16), nullable=True)
+    decision: Mapped[str | None] = mapped_column(Unicode(32), nullable=True)
+    decision_rationale: Mapped[str] = mapped_column(Unicode(4000), nullable=False, default='')
+    conditions: Mapped[str] = mapped_column(Unicode(4000), nullable=False, default='')
+    created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+    created_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    created_by_name: Mapped[str] = mapped_column(Unicode(200), nullable=False)
+    updated_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    updated_by_name: Mapped[str] = mapped_column(Unicode(200), nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+    submitted_by: Mapped[str | None] = mapped_column(Unicode(128), nullable=True)
+    submitted_by_name: Mapped[str | None] = mapped_column(Unicode(200), nullable=True)
+    __mapper_args__ = {'version_id_col': revision}
+
+
+class EAHumanReviewEvent(Base):
+    """Append-only snapshots for human create/save/submit/reopen/replace operations."""
+    __tablename__ = 'ea_human_review_events'
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey('projects.id'), nullable=False, index=True)
+    review_id: Mapped[UUID] = mapped_column(ForeignKey('ea_human_reviews.id'), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    review_revision: Mapped[int] = mapped_column(nullable=False)
+    intent_hash: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    payload: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Unicode(1000), nullable=True)
+    created_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    created_by_name: Mapped[str] = mapped_column(Unicode(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)

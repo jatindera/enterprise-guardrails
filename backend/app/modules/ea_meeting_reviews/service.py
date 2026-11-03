@@ -458,25 +458,10 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
 
 
 def edit_review(session,demand_id,meeting_id,review_id,data,user):
-    with tx(session):
-        project,_=project_access(session,demand_id,user,edit=True,lock=True)
-        meeting=meeting_for(session,project,meeting_id)
-        prior=session.get(EAMeetingReview,review_id)
-        if prior:
-            if prior.meeting_id!=meeting.id or prior.created_by!=oid(user) or prior.review_text!=data.text.strip(): raise HTTPException(409,'Review ID already used.')
-            return review_view(prior)
-        check_open(session,meeting,data.expected_revision)
-        reviews=active_reviews(session,meeting)
-        successful=[r for r in reviews if r.status in ['Draft','Accepted']]
-        parent=successful[-1] if successful else None
-        if not parent or parent.status!='Draft' or parent.id!=data.parent_review_id: raise HTTPException(409,'Edit the latest saved draft.')
-        if not data.text.strip(): raise HTTPException(422,'Review must not be blank.')
-        row=EAMeetingReview(id=review_id,meeting_id=meeting.id,version=max(r.version for r in reviews)+1,status='Draft',
-            basis_review_id=parent.basis_review_id,parent_review_id=parent.id,input_digest=parent.input_digest,input_manifest=parent.input_manifest,
-            ai_result=parent.ai_result,review_text=data.text.strip(),profile_version=parent.profile_version,
-            execution_mode=parent.execution_mode,agent_reference=parent.agent_reference,created_by=oid(user))
-        session.add(row); touch(session,meeting)
-        return review_view(row)
+    # Keep the old route explicit for older clients; never write another AI edit.
+    project,_=project_access(session,demand_id,user,edit=True)
+    meeting_for(session,project,meeting_id)
+    raise HTTPException(410,'AI review text is read-only. Save a separate human EA assessment instead.')
 
 
 def accept_review(session,demand_id,meeting_id,review_id,expected,user):

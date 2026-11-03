@@ -57,7 +57,7 @@ def download(demand_id:Demand,meeting_id:UUID,file_id:UUID,session:DB,user:User,
 def generate(demand_id:Demand,meeting_id:UUID,review_id:UUID,data:Revision,session:DB,user:User,store:Store,invoke=Depends(hosted_invoker)):
     return s.generate(session,demand_id,meeting_id,review_id,data.expected_revision,user,store,invoke)
 
-@router.put('/meetings/{meeting_id}/reviews/{review_id}/edit')
+@router.put('/meetings/{meeting_id}/reviews/{review_id}/edit',deprecated=True)
 def edit(demand_id:Demand,meeting_id:UUID,review_id:UUID,data:EditReview,session:DB,user:User):
     return s.edit_review(session,demand_id,meeting_id,review_id,data,user)
 

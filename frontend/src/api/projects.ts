@@ -4,6 +4,8 @@ import type { IntakeDraft } from "../IntakeImport";
 import type { Project } from "../types";
 
 export interface ProjectRecord {
+  eaStatus?: string;
+  eaComplexity?: Project["eaComplexity"];
   id: string;
   demandId: string;
   name: string;
@@ -196,6 +198,10 @@ export function projectFromApi(record: ProjectRecord, existing?: Project): Proje
       nextAction: "Review imported intake and confirm review applicability",
       overdueActions: 0,
     }),
+    eaStatus: record.eaStatus === "Conditional approval" ? "Conditional" :
+      (["Pending", "Approved", "On hold", "Rejected"].includes(record.eaStatus ?? "")
+        ? record.eaStatus as Project["eaStatus"] : existing?.eaStatus ?? "Pending"),
+    eaComplexity: record.eaComplexity ?? existing?.eaComplexity ?? "Not assessed",
     id: record.id,
     demandId: record.demandId,
     name: record.name,

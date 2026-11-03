@@ -65,9 +65,8 @@ def test_reopened_workspace_uses_all_transcripts_and_keeps_accepted_history(clie
     assert generate(client,first,uid).json()==review and len(calls)==1
     edited=client.put(f'{BASE}/{first["id"]}/reviews/{uuid4()}/edit',json={'expectedRevision':state(client,first)['revision'],
         'parentReviewId':review['id'],'text':review['text']+'\nReviewer correction: confirm with Operations.'})
-    assert edited.status_code==200,edited.text
-    edit=edited.json(); assert edit['version']==2 and edit['parentReviewId']==review['id']
-    assert accept(client,first,edit).status_code==200
+    assert edited.status_code==410,edited.text
+    assert accept(client,first,review).status_code==200
     assert upload(client,first,'Changed').status_code==409
     assert reopen(client,first).status_code==200
     second=create(client); assert second['id']==first['id'] and second['number']==1
@@ -78,12 +77,12 @@ def test_reopened_workspace_uses_all_transcripts_and_keeps_accepted_history(clie
     assert 'Reviewer correction' not in json.dumps(calls[-1])
     assert accept(client,second,result.json()).status_code==200
     first_state=state(client,first)
-    assert first_state['state']=='Accepted' and len(first_state['reviews'])==4
+    assert first_state['state']=='Accepted' and len(first_state['reviews'])==3
     assert first_state['reviews'][0]['text']==review['text']
     assert client.get(BASE).json()['latestAcceptedReview']['id']==result.json()['id']
     with Session(database) as db:
         assert len(list(db.scalars(select(EAReviewMeeting))))==1
-        assert len(list(db.scalars(select(EAMeetingReview))))==4
+        assert len(list(db.scalars(select(EAMeetingReview))))==3
         assert db.get(EAMeetingTranscript,UUID(file['id'])).sha256
 
 

@@ -189,10 +189,10 @@ export default function EAAssessment({
 
       <MessageBar intent="info">
         <MessageBarBody>
-          Record EA requirements and pending work in one list.
-          Closing an item does not grant EA approval or authorize
-          a risk exception. Records are local and are cleared
-          when this workspace is unmounted or the page is refreshed.
+          The Human EA final review below is saved to the database.
+          The separate EA requirements and pending items list remains local
+          and clears when this workspace is unmounted or refreshed.
+          Closing an item does not grant EA approval or authorize a risk exception.
         </MessageBarBody>
       </MessageBar>
 
@@ -381,7 +381,7 @@ export default function EAAssessment({
       <p className="workspace-secondary">
         Editing a closed item’s description reopens it.
         Comments can be updated without changing its status.
-        Formal EA approval will be recorded separately.
+        Record the final human EA decision in Human EA final review above.
         Only Security authorizes exceptions.
       </p>
     </section>

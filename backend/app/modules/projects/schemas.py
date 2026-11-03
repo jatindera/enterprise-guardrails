@@ -49,6 +49,8 @@ class ImportProject(APIModel):
 
 
 class ProjectSummary(APIModel):
+    ea_status: str
+    ea_complexity: str
     id: UUID
     demand_id: str
     name: str
