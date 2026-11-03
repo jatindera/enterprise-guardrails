@@ -195,7 +195,7 @@ export default function EAMeetingReview({demandId, canEdit, beforeGenerate, onAc
               }, "Deleting transcript…")}>{file.status === "Deleting" ? "Retry deletion" : file.status === "Pending" ? "Cancel pending upload" : "Delete file"}</Button></div></li>)}</ul>
           {meeting.isCurrent === false && <p className="workspace-secondary">Historical workspace — read-only. Continue in the current workspace.</p>}
           {meeting.state === "Accepted" && <p>This review is accepted and read-only. Reopen it to add transcripts or revise the draft.</p>}
-          {canEdit && meeting.canReopen && <Button disabled={busy || dirty} onClick={() => {setReopenOpen(true);setReopenReason("");reopenId.current=null;}}>Reopen accepted review</Button>}
+          {canEdit && meeting.canReopen && <Button appearance="primary" disabled={busy || dirty} onClick={() => {setReopenOpen(true);setReopenReason("");reopenId.current=null;}}>Reopen accepted review</Button>}
           {meeting.state === "Open" && <><TranscriptUpload staged attachments={local} onAttachmentChange={setLocal} disabled={!editable || dirty}/>
             <Button appearance="primary" disabled={!editable || dirty || !local.length} onClick={() => void run(upload, "Saving transcripts…")}>Save transcripts</Button></>}
         </div>

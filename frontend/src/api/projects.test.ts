@@ -32,14 +32,12 @@ describe("project API mapping", () => {
     const existing = projectFromApi(record);
     existing.eaStatus = "Approved";
     existing.securityStatus = "Conditional";
-    existing.eaItems = [{ id: "action", description: "Update diagram", comments: "", status: "Open", dueDate: "", createdAt: "2026-10-23" }];
     existing.intakeSource = { fileName: "old.md", markdown: "# Intake", importedAt: "2026-10-23" };
     const refreshed = projectFromApi({ ...record, name: "Updated name", revision: 2 }, existing);
     expect(refreshed.name).toBe("Updated name");
     expect(refreshed.revision).toBe(2);
     expect(refreshed.eaStatus).toBe("Approved");
     expect(refreshed.securityStatus).toBe("Conditional");
-    expect(refreshed.eaItems).toEqual(existing.eaItems);
     expect(refreshed.intakeSource).toEqual(existing.intakeSource);
   });
 

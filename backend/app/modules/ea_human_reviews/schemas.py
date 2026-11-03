@@ -1,4 +1,5 @@
 """Human-authored fields; client cannot set identity, status or source text."""
+from datetime import date
 from typing import Literal
 from uuid import UUID
 from pydantic import Field, field_validator, model_validator
@@ -28,6 +29,20 @@ class SaveDraft(Revision):
     decision: Literal['Approved','Conditional approval','On hold','Rejected'] | None = None
     decision_rationale: str = Field(default='', max_length=4000)
     conditions: str = Field(default='', max_length=4000)
+
+    diagram_id: UUID | None = None
+    diagram_confirmed: bool = Field(default=False, strict=True)
+    diagram_requirement: Literal['Required','Not applicable','Pending'] = 'Required'
+    diagram_justification: str = Field(default='',max_length=2000)
+    diagram_owner: str = Field(default='',max_length=320)
+    diagram_due_date: date | None = None
+
+    @field_validator('diagram_justification','diagram_owner')
+    @classmethod
+    def diagram_text(cls,value,info):
+        if len(value.encode('utf-16-le'))//2 > (320 if info.field_name=='diagram_owner' else 2000):
+            raise ValueError('Diagram text is too long.')
+        return value.strip()
 
     @field_validator('review_text','technology_stack','technology_rationale','decision_rationale','conditions')
     @classmethod

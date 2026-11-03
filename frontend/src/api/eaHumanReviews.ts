@@ -4,12 +4,15 @@ import type {Rating, ReviewStatus} from "../types";
 
 export type HumanDecision = "Approved" | "Conditional approval" | "On hold" | "Rejected";
 export interface HumanFields {
+  diagramId?:string|null; diagramConfirmed?:boolean; diagramRequirement?:'Required'|'Not applicable'|'Pending';
+  diagramJustification?:string; diagramOwner?:string; diagramDueDate?:string|null;
   reviewText:string; technologyStack:string; technologyRationale:string;
   complexity:Exclude<Rating,"Not assessed"> | null; decision:HumanDecision | null;
   decisionRationale:string; conditions:string;
 }
 export interface HumanReview extends HumanFields {
   id:string; version:number; revision:number; status:"Draft"|"Submitted"|"Superseded";
+  diagramFileName?:string;
   sourceReviewId:string; parentReviewId:string|null;
   createdAt:string; updatedAt:string; createdBy:string; updatedBy:string;
   submittedAt:string|null; submittedBy:string|null;

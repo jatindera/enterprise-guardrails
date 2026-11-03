@@ -95,7 +95,6 @@ function App() {
       }
       updated.stage = deriveStage(updated);
       if (
-        patch.eaItems !== undefined ||
         patch.securityConditions !== undefined ||
         patch.raiConditions !== undefined
       ) {

@@ -1,95 +1,28 @@
-# Application testing steps
+# Live validation
 
-Use the fictional Supplier Certificate project, Demand 5276, from the earlier
-validation pack. Do not upload proposal/checklist Markdown files as transcripts.
-For minimal cost, do steps 1–3 with two generations. Other checks are optional.
-Keep the workspace Open between stages; acceptance is tested last.
+Use a test demand. Back up the database before applying the migration. Confirm `uv run alembic current` reports `20261103_ea_diagram_approval` after upgrading.
 
-## 1. First meeting: missing information
+1. **Labels** — Expand AI source & human version details. Confirm the inner source is explicitly labelled Original AI review used for this assessment (read-only). Saved human review history still shows human versions.
+2. **No diagram** — On a draft set Approved and complete the other required fields. Leave Diagram requirement as Required without a file. Save draft succeeds; Submit remains disabled. A direct submission request is rejected by the backend with HTTP 422.
+3. **Persistence** — Upload a PDF/image/Draw.io/Visio diagram with a description. Refresh and restart the backend. The uploaded file remains listed and downloadable. Previously local diagrams need re-uploading.
+4. **Human confirmation** — Click Use for human assessment. Save with the checkbox unchecked: approval remains blocked. Tick the explicit confirmation, Save draft, then submit. Approval succeeds.
+5. **Version binding** — Submit using one diagram, then upload another version later. The old submitted review must retain its original file ID and filename. Inspect its saved history and snapshots.
+6. **Reopen** — Reopen an approved review with a reason. The old submitted snapshot remains unchanged. The new draft retains the file link but has confirmation cleared; another approval requires renewed confirmation and saving.
+7. **Not applicable** — Choose Not applicable with an empty justification: approval is blocked. Enter a legitimate reason and save; approval can be submitted. The reason remains in the saved review and snapshots.
+8. **Conditional pending** — Choose Pending. Approved must stay blocked. Conditional approval requires diagram justification, action owner, due date and Conditions. Save and confirm submission; all details remain after refresh.
+9. **Nonapproval/drafts** — On hold and Rejected may be submitted without a diagram, provided other decision fields are complete. Draft saving always allows missing diagram evidence.
+10. **Permissions** — Additional/unassigned EA, Security and RAI cannot upload or select evidence for the final review or change its confirmation. Direct upload and review-write requests return 403. Primary EA/Admin can act.
+11. **Wrong reference/storage failure** — A missing, Pending or other-project diagram ID cannot satisfy approval. Failed uploads must not appear in the Ready list or unlock submission. Restore storage access and retry the same unchanged upload.
+12. **Regression** — Check human draft persistence, final confirmation, reopening, stale-edit 409 handling, AI-source preservation and the blue Open review meeting button. Removed EA pending items remain absent.
 
-1. Open EA Assessment → Review meeting for Demand 5276.
-2. Use the existing workspace, or start one if needed. If previously accepted,
-   reopen with a reason using the primary EA or Admin account.
-3. For a clean staged test, include Meeting 1 only. Do not remove evidence from a
-   real project for testing; use a dedicated test demand/workspace.
-4. Select Proposal A from 05_Technology_Proposals.md, or your own proposal. Enter
-   the rationale and click Save proposal.
-5. Upload/save 02_Meeting_1_Discovery.txt and click Review meeting with AI.
-6. Confirm the seven numbered sections appear in the fixed order from README.
-7. Check for material gaps such as retention conflict, supplier access, identity,
-   licensing/support and recovery expectations. Expect Needs clarification, a reason
-   and focused questions. The review should challenge an unsupported expensive stack.
-8. Check [E#] labels against section 7 and the actual transcript. Quotes should match
-   the original line (or explicitly show excerpt truncation). Both sides of a
-   reported contradiction should be cited. Recommendations are not company policies.
-
-Do not require exact wording, exhaustive findings or a particular vendor choice.
-The maximum findings/questions limits mean prioritization is necessary.
-
-## 2. Second meeting: revised context and proposal
-
-1. Keep Meeting 1 attached and add/save 03_Meeting_2_Clarifications.txt in the same
-   workspace. There is no Next meeting step.
-2. Change the proposal to Proposal B, or a justified revised proposal, and Save.
-3. Click Regenerate review.
-4. Confirm the same seven-section template appears and the CURRENT proposal is
-   assessed, with suitability, alternatives and trade-offs.
-5. Check that the five-year draft is distinguished from the later seven-year agreed
-   design requirement. Upload order alone must not determine chronology.
-6. Confirm proposed access/recovery controls are not described as implemented or
-   tested. Licensing and written records evidence may still be open.
-7. Readiness may remain Needs clarification if a material design dependency remains;
-   the reason/questions must explain why. It may become Ready for human assessment
-   when supported by the evidence. Do not force readiness just because a second
-   transcript was added or the human prefers a platform.
-8. Open an earlier review version: its content must remain unchanged.
-9. Refresh/restart the app: saved proposal, transcripts and new template must restore.
-
-## 3. Acceptance and authority
-
-1. Inspect/edit any needed reviewer corrections using Edit review text; save as a
-   new version. Confirm red/green labels are categories, not compliance decisions.
-2. Click Accept meeting review → Cancel: workspace stays Open.
-3. Click Accept meeting review → Confirm acceptance: accepted workspace becomes
-   read-only. This confirms the meeting summary, not the final EA project verdict.
-4. Refresh: accepted text/history remains. Primary EA/Admin can reopen with a reason.
-5. Reopen, change proposal or transcripts: the old draft must not be accepted against
-   changed inputs; regenerate through the existing stale-input checks.
-6. View-only users cannot edit/accept. Additional EA can edit an Open workspace but
-   cannot accept/reopen unless existing permissions allow it.
-7. Confirm the separate final EA assessment screen, stack, complexity and verdict
-   have not been changed by this increment.
-
-## Optional scope-change test
-
-Add Meeting 3 and change to Proposal C, then regenerate. External supplier access
-introduces new material questions. Expect reassessment/clarification, not an
-assumption that more transcripts always imply greater readiness.
-
-## Automated checks on your machine
-
-Backend (from backend/):
+Commands:
 
 ```powershell
-uv run python -m pytest -q
-```
-
-Frontend (from frontend/):
-
-```powershell
-npx vitest run
+# backend
+uv run python -m pytest tests -q
+# frontend
+npx vitest run --maxWorkers=2
 npm run build
 ```
 
-## Troubleshooting
-
-- Old layout: check both backend and frontend files were copied; restart both. Existing
-  reviews deliberately keep their previous template until you regenerate.
-- invalid_schema: read the displayed field names and backend ea_review_failed event.
-  New output needs template_version, readiness and the technology list fields. A
-  malformed response is Failed, never silently replaced by a demo or accepted draft.
-- Output limit: the model did not complete its JSON. No partial draft is accepted.
-  Check the selected execution mode/model and output budget deliberately; this patch
-  does not raise limits or trigger paid retries automatically.
-- Missing source: verify all needed transcripts are Ready in this workspace; previous
-  AI reviews/prepared questions are still excluded from model context.
+Record Pass / Fail / Needs inspection and share visible errors/HTTP status if anything fails. Do not share tokens or connection strings.

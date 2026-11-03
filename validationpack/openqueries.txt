@@ -1,0 +1,14 @@
+**Supplier Identifier Integration [E6]**
+The project board has approved an automated API interface utilizing the existing enterprise middleware, establishing real-time synchronization with the supplier database. The manual CSV refresh option has been formally rejected due to data latency risks and maintenance overhead.
+
+**RTO/RPO and Recovery Procedures [E7]**
+Business stakeholders and IT operations have formally agreed to a Recovery Time Objective (RTO) of 4 hours and a Recovery Point Objective (RPO) of 1 hour. The infrastructure team successfully demonstrated these metrics during the disaster recovery tabletop exercise on [Date], and automated failover scripts have been added to the standard runbook.
+
+**Low-Code Stack Licensing and Storage [E8]**
+The enterprise architecture team has audited the proposed solution and confirmed that all required data storage and system connectors are fully covered under the current enterprise licensing tier. Validation is complete, and no additional capital or operational expenditures will be incurred.
+
+**Scope Contradiction: Internal vs. External Access [E9, E10]**
+The scope has been firmly restricted to the initial internal-only rollout (40 users) for Phase 1 to ensure baseline security and compliance. The proposal for direct portal access for 300 external supplier contacts has been moved to the Phase 2 backlog, requiring a separate risk assessment and budget approval before proceeding.
+
+**External Identity Lifecycle Management [E11]**
+External supplier contacts will be managed through a delegated administration model. A designated sponsor within each supplier organization will act as the local administrator, required to verify and attest to their active user list via the IAM portal every 90 days. Accounts failing recertification will be automatically suspended.

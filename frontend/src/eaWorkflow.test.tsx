@@ -57,7 +57,7 @@ describe("combined EA assessment", () => {
    const assessmentButtons=screen.getAllByRole("button",{name:"EA assessment"});
    expect(assessmentButtons).toHaveLength(2);
    fireEvent.click(assessmentButtons[1]);
-   expect(screen.getByText("EA requirements & pending items")).toBeTruthy();
+   expect(screen.queryByText("EA requirements & pending items")).toBeNull();
    expect(screen.getByRole("button",{name:"Open review meeting"})).toBeTruthy();
  });
  it("retains the meeting selection and EA assessment draft across phase and project section switches", async () => {
@@ -68,8 +68,6 @@ describe("combined EA assessment", () => {
    const question=screen.getByLabelText("Question") as HTMLTextAreaElement;
    fireEvent.change(question,{target:{value:"My retained question"}});
    fireEvent.click(screen.getAllByRole("button",{name:"EA assessment"})[1]);
-   const description=screen.getByPlaceholderText("Describe the EA requirement or pending item…") as HTMLTextAreaElement;
-   fireEvent.change(description,{target:{value:"Keep this EA draft"}});
    const diagram=screen.getByLabelText("Diagram draft") as HTMLInputElement;
    const approval=screen.getByLabelText("Approval draft") as HTMLInputElement;
    fireEvent.change(diagram,{target:{value:"Diagram state"}});
@@ -79,7 +77,6 @@ describe("combined EA assessment", () => {
    fireEvent.click(within(nav).getByRole("button",{name:"Security assessment"}));
    fireEvent.click(within(nav).getByRole("button",{name:"EA assessment"}));
    fireEvent.click(screen.getAllByRole("button",{name:"EA assessment"})[1]);
-   expect((screen.getByPlaceholderText("Describe the EA requirement or pending item…") as HTMLTextAreaElement).value).toBe("Keep this EA draft");
    expect((screen.getByLabelText("Diagram draft") as HTMLInputElement).value).toBe("Diagram state");
    expect((screen.getByLabelText("Approval draft") as HTMLInputElement).value).toBe("Approval state");
  });

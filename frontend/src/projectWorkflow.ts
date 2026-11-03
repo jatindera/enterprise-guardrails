@@ -105,7 +105,6 @@ export function overdueConditionCount(
   today: string,
 ): number {
   const actions = [
-    ...(project.eaItems ?? []),
     ...(project.securityConditions ?? []),
     ...(project.raiConditions ?? []),
   ];

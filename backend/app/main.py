@@ -1,3 +1,4 @@
+from app.modules.ea_diagrams.router import router as ea_diagrams_router
 # keep following at top of file to avoid circular imports
 from app.modules.meetings.router import router as meetings_router
 from app.modules.ea_preparation.router import router as ea_preparation_router
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(meetings_router)
     application.include_router(ea_preparation_router)
     application.include_router(ea_meeting_reviews_router)
+    application.include_router(ea_diagrams_router)
     application.include_router(ea_human_reviews_router)
     application.include_router(projects_router)
     application.include_router(arb_voting_router)

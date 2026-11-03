@@ -23,12 +23,12 @@ def draft(c,ai,uid=None,**extra):
     return c.put(f'{BASE}/reviews/{uid or uuid4()}',json=body)
 
 def save(c,row,uid=None,**changes):
-    body={k:row[k] for k in ['reviewText','technologyStack','technologyRationale','complexity','decision','decisionRationale','conditions']}
+    body={k:row[k] for k in ['reviewText','technologyStack','technologyRationale','complexity','decision','decisionRationale','conditions','diagramId','diagramConfirmed','diagramRequirement','diagramJustification','diagramOwner','diagramDueDate']}
     body.update(expectedRevision=row['revision'],**changes)
     return c.put(f'{BASE}/reviews/{row["id"]}/save/{uid or uuid4()}',json=body)
 
 def ready(c,row,**changes):
-    return save(c,row,technologyStack='Power Apps',technologyRationale='Internal forms and reminders.',
+    return save(c,row,diagramRequirement='Not applicable',diagramJustification='Minor configuration change with no architecture impact.',technologyStack='Power Apps',technologyRationale='Internal forms and reminders.',
         complexity='Low',decision='Approved',decisionRationale='Design inputs are sufficient for this scope.',**changes)
 
 def submit(c,row,uid=None,**extra):
@@ -230,6 +230,10 @@ def test_migration_preserves_existing_ai_and_intake_and_supports_roundtrip(clien
         migration.downgrade()
         assert 'ea_human_reviews' not in inspect(connection).get_table_names()
         migration.upgrade()
+        operations.drop_table('ea_architecture_diagrams')
+        spec=spec_from_file_location('diagram_migration',Path(__file__).parents[1]/'migrations/versions/20261103_ea_diagram_approval.py')
+        diagrams=module_from_spec(spec);spec.loader.exec_module(diagrams);monkeypatch.setattr(diagrams,'op',operations)
+        diagrams.upgrade()
     assert draft(client,ai).status_code==200
     assert meeting_state(client,meeting)['reviews'][0]['text']==ai['text']
 

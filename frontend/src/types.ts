@@ -18,12 +18,7 @@ export interface TrackedCondition {
   dueDate: string;
 }
 
-export interface EAAction extends TrackedCondition {
-  description: string;
-  comments: string;
-  createdAt: string;
-  closedAt?: string;
-}
+
 
 export type GateReviewDomain = "EA" | "Security" | "RAI";
 
@@ -107,7 +102,6 @@ export interface Project {
     markdown: string;
     importedAt: string;
   };
-  eaItems?: EAAction[];
   eaTechnologyStack?: EATechnology[];
   eaTechnologyStackOther?: string;
 }

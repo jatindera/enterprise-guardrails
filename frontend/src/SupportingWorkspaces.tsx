@@ -36,7 +36,7 @@ interface TemplateVersion {
 interface ActionRow extends TrackedCondition {
   demandId: string;
   projectName: string;
-  domain: "EA" | "Security" | "RAI";
+  domain: "Security" | "RAI";
 }
 
 function downloadFile(file: File) {
@@ -77,14 +77,6 @@ export function MyActions({
   const today = localDate();
 
   const actions: ActionRow[] = projects.flatMap((project) => [
-    ...(project.eaItems ?? []).map((item) => ({
-      ...item,
-      owner: project.assignedEA,
-      demandId: project.demandId,
-      projectName: project.name,
-      domain: "EA" as const,
-    })),
-
     ...(project.securityConditions ?? []).map((condition) => ({
       ...condition,
       demandId: project.demandId,
@@ -176,7 +168,6 @@ export function MyActions({
             onChange={(_, data) => setDomainFilter(data.value)}
           >
             <option value="All">All domains</option>
-            <option value="EA">EA</option>
             <option value="Security">Security</option>
             <option value="RAI">Responsible AI</option>
           </Select>
@@ -209,7 +200,7 @@ export function MyActions({
       {visibleActions.length === 0 ? (
         <section className="supporting-panel">
           <p className="workspace-secondary">
-  Open the project’s EA, Security, or RAI screen to update
+  Open the project’s Security or RAI screen to update
   the item. Closure remains with the responsible reviewer.
 </p>
         </section>

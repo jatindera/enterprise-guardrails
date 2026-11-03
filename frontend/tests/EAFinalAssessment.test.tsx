@@ -14,13 +14,13 @@ vi.mock('../src/api/eaHumanReviews',async importOriginal=>{
 });
 const project={demandId:'5276',name:'Supplier tracker',assignedEA:'ea@example.test',eaComplexity:'High',eaStatus:'Approved'} as Project;
 const accepted:AcceptedMeetingReview={id:'ai-1',version:2,text:'Accepted AI evidence',acceptedAt:'2026-11-02T05:00:00Z'};
-const props={project,canClose:true,items:[],currentDiagram:null,acceptedReview:accepted};
+const props={project,canClose:true,currentDiagram:null,acceptedReview:accepted};
 let db:HumanState;
 function review():HumanReview {return {id:'human-1',version:1,revision:1,status:'Draft',sourceReviewId:'ai-1',parentReviewId:null,
-  reviewText:accepted.text,technologyStack:'Power Apps',technologyRationale:'Internal workflow',complexity:null,decision:null,decisionRationale:'',conditions:'',
+  diagramRequirement:'Required',diagramConfirmed:false,diagramId:null,diagramJustification:'',diagramOwner:'',diagramDueDate:null,reviewText:accepted.text,technologyStack:'Power Apps',technologyRationale:'Internal workflow',complexity:null,decision:null,decisionRationale:'',conditions:'',
   createdAt:'2026-11-02T06:00:00Z',updatedAt:'2026-11-02T06:00:00Z',createdBy:'Primary EA',updatedBy:'Primary EA',submittedAt:null,submittedBy:null};}
 function existing(row=review()) {db.currentReview=row;db.history=[row];db.canSubmit=true;}
-function ready() {existing({...review(),complexity:'Low',decision:'Approved',decisionRationale:'Scope and design accepted'});}
+function ready() {existing({...review(),diagramRequirement:'Not applicable',diagramJustification:'Minor configuration change',complexity:'Low',decision:'Approved',decisionRationale:'Scope and design accepted'});}
 function button(name:string){return screen.getByRole('button',{name,exact:true}) as HTMLButtonElement;}
 async function loaded(){await waitFor(()=>expect(screen.queryByText('Loading saved human review…')).toBeNull());}
 function value(){return (screen.getByLabelText('Final assessment text') as HTMLTextAreaElement).value;}
@@ -80,8 +80,9 @@ it('submits unchanged AI text only after confirmation and updates portfolio from
   expect(api.submitHumanReview).not.toHaveBeenCalled();fireEvent.click(button('Cancel'));expect(api.submitHumanReview).not.toHaveBeenCalled();
   fireEvent.click(button('Submit final EA decision'));fireEvent.click(button('Confirm final submission'));
   await screen.findByText('Submitted human final review');expect(api.submitHumanReview).toHaveBeenCalledWith('5276','human-1',expect.any(String),1,7);
-  expect(value()).toBe(accepted.text);expect(button('Save draft').disabled).toBe(true);
-  expect((screen.getByLabelText('Final assessment text').closest('fieldset') as HTMLFieldSetElement).disabled).toBe(true);
+  expect(screen.queryByLabelText('Final assessment text')).toBeNull();
+  expect(screen.queryByRole('button',{name:'Save draft'})).toBeNull();
+  expect(screen.getByRole('region',{name:'Formatted human final review'}).textContent).toContain(accepted.text);
   expect(update).toHaveBeenLastCalledWith('5276',expect.objectContaining({eaStatus:'Approved',eaComplexity:'Low',revision:8}));
 });
 it('requires saving edits and decision-specific required fields before submission',async()=>{
@@ -155,5 +156,45 @@ it('does not let a late response for another demand replace the new editor',asyn
 it('keeps human review above diagrams and removes the duplicate stack panel',async()=>{
   render(<ProjectUpdateContext.Provider value={vi.fn()}><EAAssessment project={project} acceptedReview={accepted} canClose onOpenReviewSession={()=>{}}/></ProjectUpdateContext.Provider>);
   await loaded();expect(screen.queryByRole('heading',{name:'Solution technology stack'})).toBeNull();
+  expect(screen.queryByRole('heading',{name:'EA requirements & pending items'})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Add EA item'})).toBeNull();
+  expect(screen.queryByText(/open EA items/)).toBeNull();
   expect(screen.getByRole('region',{name:'Human EA final assessment'}).compareDocumentPosition(screen.getByText('Existing architecture diagrams')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it('previews the human draft using the formatted reader without saving or changing text',async()=>{
+  existing();render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');edit('Requirement: Human-reviewed requirement');
+  fireEvent.click(button('Preview review'));
+  expect(screen.queryByLabelText('Final assessment text')).toBeNull();
+  expect(screen.getByRole('region',{name:'Formatted human final review'}).textContent).toContain('Human-reviewed requirement');
+  expect(api.saveHumanReview).not.toHaveBeenCalled();fireEvent.click(button('Edit review'));
+  expect(value()).toBe('Requirement: Human-reviewed requirement');
+});
+it('renders submitted reviews as reports and hides draft replacement controls',async()=>{
+  ready();await api.submitHumanReview('5276','human-1','request',1,7);
+  render(<EAApprovalReport {...props}/>);await screen.findByText('Submitted human final review');
+  expect(screen.queryByRole('textbox')).toBeNull();
+  expect(screen.getByRole('region',{name:'Formatted human final review'}).textContent).toContain('Internal workflow');
+  expect(screen.queryByRole('button',{name:'Replace draft from accepted review'})).toBeNull();
+  expect(button('Reopen human review').disabled).toBe(false);
+});
+
+it('requires diagram confirmation or a justified waiver before approval',async()=>{
+  ready();db.currentReview!.diagramRequirement='Required';db.currentReview!.diagramJustification='';
+  const view=render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');
+  expect(button('Submit final EA decision').disabled).toBe(true);
+  view.rerender(<EAApprovalReport {...props} currentDiagram={{id:'diagram-1',version:1,fileName:'design.pdf',description:'Design',uploadedAt:accepted.acceptedAt}}/>);
+  await screen.findByText(/Diagram selected. Confirm/);
+  expect(button('Submit final EA decision').disabled).toBe(true);
+  fireEvent.click(screen.getByRole('checkbox',{name:'I have reviewed this diagram and confirm it represents the assessed solution'}));
+  fireEvent.click(button('Save draft'));await screen.findByText('Human review draft saved to the database.');
+  expect(api.saveHumanReview).toHaveBeenCalledWith('5276','human-1',expect.any(String),expect.objectContaining({diagramId:'diagram-1',diagramConfirmed:true}));
+  expect(button('Submit final EA decision').disabled).toBe(false);
+});
+it('uses explicit AI source labels and allows nonapproval without diagram evidence',async()=>{
+  ready();db.currentReview!.decision='On hold';db.currentReview!.diagramRequirement='Required';db.currentReview!.diagramId=null;
+  render(<EAApprovalReport {...props}/>);await screen.findByLabelText('Final assessment text');
+  expect(screen.getByText('AI source & human version details')).toBeTruthy();
+  expect(screen.getByText('Original AI review used for this assessment (read-only)')).toBeTruthy();
+  expect(button('Submit final EA decision').disabled).toBe(false);
 });

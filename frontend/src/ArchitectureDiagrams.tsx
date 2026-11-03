@@ -1,328 +1,52 @@
-import { useRef, useState } from "react";
-
-import {
-  Badge,
-  Button,
-  MessageBar,
-  MessageBarBody,
-  Textarea,
-} from "@fluentui/react-components";
-
-import type { AcceptedMeetingReview, Project } from "./types";
-
-interface ArchitectureDiagramsProps {
-  project: Project;
-  acceptedReview: AcceptedMeetingReview | null;
-  onCurrentDiagramChange?: (
-    diagram: CurrentDiagramReference
-  ) => void;
-}
-
-interface DiagramVersion {
-  id: string;
-  version: number;
-  file: File;
-  description: string;
-  uploadedAt: string;
-}
-
-export interface CurrentDiagramReference {
-  id: string;
-  version: number;
-  fileName: string;
-  description: string;
-  uploadedAt: string;
-}
-
-const allowedExtensions = [
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".svg",
-  ".pdf",
-  ".drawio",
-  ".vsdx",
-];
-
-const maximumFileSize = 20 * 1024 * 1024;
-
-export default function ArchitectureDiagrams({
-  project,
-  acceptedReview,
-  onCurrentDiagramChange,
-}: ArchitectureDiagramsProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [description, setDescription] = useState("");
-  const [diagrams, setDiagrams] = useState<DiagramVersion[]>([]);
-  const [currentDiagramId, setCurrentDiagramId] =
-    useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-
-  function selectFile(file: File | undefined) {
-    setError("");
-    setMessage("");
-    setSelectedFile(null);
-
-    if (!file) {
-      return;
-    }
-
-    const name = file.name.toLowerCase();
-    const supported = allowedExtensions.some((extension) =>
-      name.endsWith(extension)
-    );
-
-    if (!supported) {
-      setError(
-        "Choose a PNG, JPG, SVG, PDF, Draw.io, or Visio (.vsdx) file."
-      );
-      return;
-    }
-
-    if (file.size === 0) {
-      setError("The selected file is empty.");
-      return;
-    }
-
-    if (file.size > maximumFileSize) {
-      setError("Choose a file smaller than or equal to 20 MB.");
-      return;
-    }
-
-    setSelectedFile(file);
+import {useEffect,useRef,useState} from 'react';
+import {Badge,Button,MessageBar,MessageBarBody,Textarea} from '@fluentui/react-components';
+import type {AcceptedMeetingReview,Project} from './types';
+import {getHumanReview} from './api/eaHumanReviews';
+import {listEADiagrams,uploadEADiagram,downloadEADiagram} from './api/eaDiagrams';
+import type {SavedDiagram} from './api/eaDiagrams';
+export interface CurrentDiagramReference {id:string;version:number;fileName:string;description:string;uploadedAt:string}
+interface Props {project:Project;acceptedReview:AcceptedMeetingReview|null;onCurrentDiagramChange?:(diagram:CurrentDiagramReference)=>void}
+export default function ArchitectureDiagrams({project,onCurrentDiagramChange}:Props){
+  const [rows,setRows]=useState<SavedDiagram[]>([]);const [file,setFile]=useState<File|null>(null);
+  const [description,setDescription]=useState('');const [error,setError]=useState('');const [notice,setNotice]=useState('');
+  const [busy,setBusy]=useState(false);const [canUpload,setCanUpload]=useState(false);const [canSelect,setCanSelect]=useState(false);
+  const [selected,setSelected]=useState<string|null>(null);const input=useRef<HTMLInputElement>(null);const alive=useRef(true);const lock=useRef(false);const uploadIntent=useRef<{file:File;description:string;id:string}|null>(null);
+  const demand=project.demandId;
+  useEffect(()=>{alive.current=true;const controller=new AbortController();
+    Promise.all([listEADiagrams(demand,controller.signal),getHumanReview(demand,controller.signal)]).then(([list,state])=>{
+      if(!alive.current)return;setRows(list.items);setCanUpload(state.canEdit||state.canReopen);
+      setCanSelect(state.canEdit);setSelected(state.currentReview?.diagramId??null);
+    }).catch(e=>{if(!controller.signal.aborted&&alive.current)setError(e.message);});
+    return ()=>{alive.current=false;controller.abort();};
+  },[demand,project.revision]);
+  async function upload(){if(!file||!description.trim()||!canUpload||lock.current)return;
+    if(!/\.(png|jpe?g|svg|pdf|drawio|vsdx)$/i.test(file.name)||!file.size||file.size>20*1024*1024){setError('Choose a nonempty PNG, JPG, SVG, PDF, Draw.io or Visio file, up to 20 MB.');return;}
+    lock.current=true;setBusy(true);setError('');setNotice('');
+    try{if(!uploadIntent.current||uploadIntent.current.file!==file||uploadIntent.current.description!==description.trim())uploadIntent.current={file,description:description.trim(),id:crypto.randomUUID()};
+      await uploadEADiagram(demand,uploadIntent.current.id,file,description.trim());const list=await listEADiagrams(demand);if(alive.current){setRows(list.items);setFile(null);setDescription('');if(input.current)input.current.value='';setNotice('Diagram saved. Use it for your human assessment, then confirm it in the review above.');}}
+    catch(e){if(alive.current)setError((e as Error).message);}finally{lock.current=false;if(alive.current)setBusy(false);}
   }
-
-  function addDiagram() {
-    if (!selectedFile) {
-      setError("Select a diagram file first.");
-      return;
-    }
-
-    if (!description.trim()) {
-      setError("Add a short description of this diagram version.");
-      return;
-    }
-
-    const nextVersion =
-      Math.max(0, ...diagrams.map((diagram) => diagram.version)) + 1;
-
-    const diagram: DiagramVersion = {
-      id: crypto.randomUUID(),
-      version: nextVersion,
-      file: selectedFile,
-      description: description.trim(),
-      uploadedAt: new Date().toISOString(),
-    };
-
-    setDiagrams((current) => [...current, diagram]);
-    setSelectedFile(null);
-    setDescription("");
-    setError("");
-    setMessage(
-      `Version ${nextVersion} added. Use “Mark as current” when it is ready for reviewers.`
-    );
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  function markAsCurrent(diagram: DiagramVersion) {
-  setCurrentDiagramId(diagram.id);
-
-  onCurrentDiagramChange?.({
-    id: diagram.id,
-    version: diagram.version,
-    fileName: diagram.file.name,
-    description: diagram.description,
-    uploadedAt: diagram.uploadedAt,
-  });
-
-  setMessage(`Version ${diagram.version} is now the current diagram.`);
-  setError("");
-}
-
-  function downloadDiagram(diagram: DiagramVersion) {
-    const url = URL.createObjectURL(diagram.file);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download =
-      `${project.demandId}-architecture-v${diagram.version}-` +
-      diagram.file.name;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  return (
-    <section className="content-panel architecture-diagrams">
-      <div className="panel-heading">
-        <h2>Architecture diagrams</h2>
-
-        <Badge appearance="tint" color="informative">
-          {diagrams.length} versions
-        </Badge>
-      </div>
-
-      <div className="workspace-panel-body">
-        <MessageBar intent="info">
-          <MessageBarBody>
-            Files are held locally while this workspace remains mounted.
-            Refreshing or leaving the project clears them. Permanent
-            storage and AI diagram generation await backend integration.
-          </MessageBarBody>
-        </MessageBar>
-
-        <div className="diagram-ai-section">
-          <Button appearance="primary" disabled>
-            Create diagram with AI
-          </Button>
-
-          <Badge appearance="tint" color="warning">
-            Awaiting agent integration
-          </Badge>
-
-          <p className="workspace-secondary">
-            The connected agent will use intake, confirmed requirements,
-            accepted meeting evidence, and diagram rules to propose a
-            draft for architect review.
-          </p>
-
-          <p className="workspace-secondary">
-            Intake:{" "}
-            {project.intakeSource
-              ? "Imported markdown available"
-              : "Project summary only"}
-            {" · "}
-            Accepted meeting review:{" "}
-            {acceptedReview ? "Available" : "Not yet available"}
-          </p>
-        </div>
-
-        <h3>Upload a diagram version</h3>
-
-        <p className="workspace-secondary">
-          Upload an existing diagram or a version edited outside this app.
-          Each upload adds a version without replacing earlier files.
-        </p>
-
-        <label className="session-field">
-          Diagram file
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={allowedExtensions.join(",")}
-            onChange={(event) =>
-              selectFile(event.currentTarget.files?.[0])
-            }
-          />
-        </label>
-
-        {selectedFile && (
-          <p className="workspace-secondary">
-            Selected: {selectedFile.name}
-            {" · "}
-            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-          </p>
-        )}
-
-        <label className="session-field">
-          Version description
-          <Textarea
-            value={description}
-            rows={3}
-            placeholder="For example: Added SharePoint destination and labelled data flows."
-            onChange={(_, data) => setDescription(data.value)}
-          />
-        </label>
-
-        <Button
-          appearance="primary"
-          disabled={!selectedFile || !description.trim()}
-          onClick={addDiagram}
-        >
-          Add diagram version
-        </Button>
-
-        {error && (
-          <p className="session-error" role="alert">
-            {error}
-          </p>
-        )}
-
-        {message && (
-          <p className="workspace-secondary" role="status">
-            {message}
-          </p>
-        )}
-
-        <h3>Diagram versions</h3>
-
-        {diagrams.length === 0 ? (
-          <p className="workspace-secondary">
-            No diagrams uploaded yet.
-          </p>
-        ) : (
-          <div className="diagram-version-list">
-            {[...diagrams].reverse().map((diagram) => {
-              const isCurrent = diagram.id === currentDiagramId;
-
-              return (
-                <article className="diagram-version" key={diagram.id}>
-                  <div className="workspace-tags">
-                    <Badge appearance="tint" color="brand">
-                      Version {diagram.version}
-                    </Badge>
-
-                    {isCurrent && (
-                      <Badge appearance="filled" color="success">
-                        Current
-                      </Badge>
-                    )}
-                  </div>
-
-                  <h4>{diagram.file.name}</h4>
-
-                  <p className="diagram-description">
-                    {diagram.description}
-                  </p>
-
-                  <p className="workspace-secondary">
-                    Uploaded:{" "}
-                    {new Date(diagram.uploadedAt).toLocaleString()}
-                  </p>
-
-                  <div className="meeting-review-actions">
-                    <a href="#" onClick={(event) => { event.preventDefault(); downloadDiagram(diagram); }}>
-                      Download
-                    </a>
-
-                    <Button
-                      appearance={isCurrent ? "secondary" : "primary"}
-                      disabled={isCurrent}
-                      onClick={() => markAsCurrent(diagram)}
-                    >
-                      {isCurrent ? "Current diagram" : "Mark as current"}
-                    </Button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-
-        <p className="workspace-secondary">
-          “Current” identifies the diagram to reference. It does not
-          constitute EA approval.
-        </p>
-      </div>
-    </section>
-  );
+  async function download(row:SavedDiagram){setError('');try{const data=await downloadEADiagram(demand,row.id);if(!alive.current)return;
+    const url=URL.createObjectURL(data),link=document.createElement('a');link.href=url;link.download=row.fileName;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){if(alive.current)setError((e as Error).message);}}
+  async function choose(row:SavedDiagram,index:number){if(busy||lock.current)return;lock.current=true;setBusy(true);setError('');
+    try{const state=await getHumanReview(demand);if(!alive.current)return;setCanSelect(state.canEdit);
+      if(!state.canEdit||!state.currentReview){setError('Create or reopen a human draft before selecting a diagram.');return;}
+      setSelected(row.id);onCurrentDiagramChange?.({id:row.id,version:index+1,fileName:row.fileName,description:row.description,uploadedAt:row.uploadedAt});
+      setNotice('Diagram selected locally. Confirm it and Save draft in the human review above.');
+    }catch(e){if(alive.current)setError((e as Error).message);}finally{lock.current=false;if(alive.current)setBusy(false);}}
+  return <section className="content-panel architecture-diagrams"><div className="panel-heading"><h2>Architecture diagrams</h2><Badge>{rows.length} saved versions</Badge></div>
+    <div className="workspace-panel-body"><MessageBar><MessageBarBody>Uploaded versions are stored securely and retained as evidence. Selecting a file does not approve it; the human EA must confirm the selected version.</MessageBarBody></MessageBar>
+      <Button disabled>Create diagram with AI</Button><p className="workspace-secondary">AI diagram generation remains deferred.</p>
+      <h3>Upload a diagram version</h3><label className="session-field">Diagram file<input ref={input} type="file" accept=".png,.jpg,.jpeg,.svg,.pdf,.drawio,.vsdx" disabled={!canUpload||busy} onChange={e=>setFile(e.currentTarget.files?.[0]??null)}/></label>
+      <label className="session-field">Version description<Textarea value={description} maxLength={4000} disabled={!canUpload||busy} onChange={(_,d)=>setDescription(d.value)}/></label>
+      <Button appearance="primary" disabled={!canUpload||busy||!file||!description.trim()} onClick={()=>void upload()}>Add diagram version</Button>
+      {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
+      <h3>Saved diagram versions</h3>{!rows.length&&<p>No diagrams uploaded yet.</p>}
+      {rows.map((row,i)=><article key={row.id} className="diagram-version"><strong>{row.fileName}</strong> {selected===row.id&&<Badge color="brand">Selected for assessment</Badge>}
+        <p>{row.description}</p><p className="workspace-secondary">{new Date(row.uploadedAt).toLocaleString()} · {row.uploadedByName}</p>
+        <Button disabled={busy||!canSelect} onClick={()=>void choose(row,i)}>Use for human assessment</Button> <Button onClick={()=>void download(row)}>Download {row.fileName}</Button>
+      </article>)}
+      {!canSelect&&<p className="workspace-secondary">Create or reopen the human review draft before selecting a diagram.</p>}
+    </div></section>;
 }

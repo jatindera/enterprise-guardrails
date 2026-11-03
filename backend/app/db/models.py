@@ -478,6 +478,13 @@ class EAHumanReview(Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
     submitted_by: Mapped[str | None] = mapped_column(Unicode(128), nullable=True)
     submitted_by_name: Mapped[str | None] = mapped_column(Unicode(200), nullable=True)
+    diagram_id: Mapped[UUID | None] = mapped_column(ForeignKey('ea_architecture_diagrams.id', name='fk_ea_human_review_diagram'), nullable=True)
+    diagram_file_name: Mapped[str] = mapped_column(Unicode(260), nullable=False, default='')
+    diagram_confirmed: Mapped[bool] = mapped_column(nullable=False, default=False)
+    diagram_requirement: Mapped[str] = mapped_column(Unicode(20), nullable=False, default='Required')
+    diagram_justification: Mapped[str] = mapped_column(Unicode(2000), nullable=False, default='')
+    diagram_owner: Mapped[str] = mapped_column(Unicode(320), nullable=False, default='')
+    diagram_due_date: Mapped[date | None] = mapped_column(nullable=True)
     __mapper_args__ = {'version_id_col': revision}
 
 
@@ -495,3 +502,23 @@ class EAHumanReviewEvent(Base):
     created_by: Mapped[str] = mapped_column(Unicode(128), nullable=False)
     created_by_name: Mapped[str] = mapped_column(Unicode(200), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+
+
+class EAArchitectureDiagram(Base):
+    __tablename__ = "ea_architecture_diagrams"
+    __table_args__ = (CheckConstraint("status IN ('Pending', 'Ready')", name="status"),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    file_name: Mapped[str] = mapped_column(Unicode(260), nullable=False)
+    description: Mapped[str] = mapped_column(Unicode(4000), nullable=False, default="")
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    sha256: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    storage_account: Mapped[str] = mapped_column(Unicode(24), nullable=False)
+    container: Mapped[str] = mapped_column(Unicode(63), nullable=False)
+    blob_name: Mapped[str] = mapped_column(Unicode(300), nullable=False)
+    status: Mapped[str] = mapped_column(Unicode(7), nullable=False)
+    uploaded_by_object_id: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    uploaded_by_name: Mapped[str] = mapped_column(Unicode(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
+

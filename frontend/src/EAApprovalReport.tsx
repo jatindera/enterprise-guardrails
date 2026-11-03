@@ -1,6 +1,6 @@
 import {useContext, useEffect, useRef, useState} from "react";
 import {Badge, Button, Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent,
-  DialogActions, MessageBar, MessageBarBody, Select, Textarea} from "@fluentui/react-components";
+  DialogActions, Checkbox, Input, MessageBar, MessageBarBody, Select, Textarea} from "@fluentui/react-components";
 import type {AcceptedMeetingReview, Project} from "./types";
 import type {CurrentDiagramReference} from "./ArchitectureDiagrams";
 import {ProjectUpdateContext} from "./ProjectUpdates";
@@ -11,26 +11,27 @@ import EAReviewReader from "./EAReviewReader";
 import "./EAMeetingReview.css";
 import "./EAFinalAssessment.css";
 
-interface ReportItem {id:string; description:string; comments:string; status:"Open"|"Closed"}
 interface Props {
-  canClose:boolean; readOnly?:boolean; project:Project; items:ReportItem[];
+  canClose:boolean; readOnly?:boolean; project:Project;
   currentDiagram:CurrentDiagramReference|null; acceptedReview:AcceptedMeetingReview|null;
 }
 function fields(row:HumanReview):HumanFields {
   return {reviewText:row.reviewText,technologyStack:row.technologyStack,technologyRationale:row.technologyRationale,
-    complexity:row.complexity,decision:row.decision,decisionRationale:row.decisionRationale,conditions:row.conditions};
+    complexity:row.complexity,decision:row.decision,decisionRationale:row.decisionRationale,conditions:row.conditions,diagramId:row.diagramId??null,diagramConfirmed:row.diagramConfirmed??false,
+    diagramRequirement:row.diagramRequirement??'Required',diagramJustification:row.diagramJustification??'',diagramOwner:row.diagramOwner??'',diagramDueDate:row.diagramDueDate??null};
 }
 
 // Remount on demand changes: a late request for another project cannot replace this editor.
 export default function EAApprovalReport(props:Props) {
   return <HumanReviewEditor key={props.project.demandId} {...props}/>;
 }
-function HumanReviewEditor({canClose,readOnly=false,project,items,currentDiagram,acceptedReview}:Props) {
+function HumanReviewEditor({canClose,readOnly=false,project,currentDiagram,acceptedReview}:Props) {
   const updateProject=useContext(ProjectUpdateContext);
   const [state,setState]=useState<HumanState|null>(null);
   const [row,setRow]=useState<HumanReview|null>(null);
   const [draft,setDraft]=useState<HumanFields|null>(null);
   const [dirty,setDirty]=useState(false);
+  const [preview,setPreview]=useState(false);
   const dirtyRef=useRef(false);
   const [busy,setBusy]=useState(false);
   const lock=useRef(false);
@@ -53,10 +54,14 @@ function HumanReviewEditor({canClose,readOnly=false,project,items,currentDiagram
   const submitReady=Boolean(draft?.reviewText.trim() && draft.complexity && draft.decision && draft.decisionRationale.trim() &&
     (!['Approved','Conditional approval'].includes(draft.decision) || (draft.technologyStack.trim() && draft.technologyRationale.trim())) &&
     (draft.decision!=='Conditional approval' || draft.conditions.trim()));
-  const canSubmit=Boolean(canEdit && row?.status==='Draft' && state?.canSubmit && !sourceChanged && !dirty && submitReady);
+  const diagramReady=Boolean(draft && (!['Approved','Conditional approval'].includes(draft.decision??'') ||
+    (draft.diagramRequirement==='Not applicable' ? draft.diagramJustification?.trim() :
+      draft.diagramRequirement==='Pending' ? draft.decision==='Conditional approval' && draft.diagramJustification?.trim() && draft.diagramOwner?.trim() && draft.diagramDueDate :
+      draft.diagramId && draft.diagramConfirmed)));
+  const canSubmit=Boolean(canEdit && row?.status==='Draft' && state?.canSubmit && !sourceChanged && !dirty && submitReady && diagramReady);
 
   function adopt(next:HumanReview|null) {
-    setRow(next);setDraft(next ? fields(next) : null);setDirty(false);dirtyRef.current=false;
+    setRow(next);setDraft(next ? fields(next) : null);setPreview(false);setDirty(false);dirtyRef.current=false;
   }
   function sync(next:HumanState) {
     setState(next);
@@ -122,6 +127,15 @@ function HumanReviewEditor({canClose,readOnly=false,project,items,currentDiagram
       ...(row ? {expectedCurrentReviewId:row.id,expectedCurrentRevision:row.revision,replaceDraft:true}:{}),
     }),'Human review draft saved separately from the AI review.');
   }
+  const lastSelectedDiagram=useRef<string|null>(null);
+  useEffect(()=>{
+    if(!currentDiagram || currentDiagram.id===lastSelectedDiagram.current)return;
+    lastSelectedDiagram.current=currentDiagram.id;
+    if(!canClose || readOnly || !state?.canEdit)return;
+    setDraft(value=>value ? {...value,diagramId:currentDiagram.id,diagramConfirmed:false,diagramRequirement:'Required'} : value);
+    setDirty(true);dirtyRef.current=true;
+    setNotice('Diagram selected. Confirm that it represents the assessed solution, then Save draft.');
+  },[currentDiagram,canClose,readOnly,state?.canEdit]);
   function save() {
     if(!canEdit || !row || !draft)return;
     void mutate(()=>saveHumanReview(demand,row.id,crypto.randomUUID(),{...draft,expectedRevision:row.revision}),
@@ -145,42 +159,60 @@ function HumanReviewEditor({canClose,readOnly=false,project,items,currentDiagram
   }
 
   return <section className="content-panel ea-final-assessment" aria-label="Human EA final assessment">
-    <div className="panel-heading"><h2>Human EA final review</h2>
+    <div className="panel-heading ea-final-heading"><div><span className="ea-final-eyebrow">Enterprise architecture</span><h2>Human EA final review</h2><p>Your assessment, decision and supporting rationale.</p></div>
       <Badge appearance="tint" color={row?.status==='Submitted' ? 'success' : 'warning'}>{row ? `${row.status} · Version ${row.version} · Revision ${row.revision}` : 'No human review'}</Badge></div>
     <div className="workspace-panel-body" aria-busy={busy}>
-      <MessageBar intent="info"><MessageBarBody>The AI review is preserved separately. Your human review is the final assessment.
-        Save draft stores your changes together; typing makes no database requests. Save before submitting the final decision.</MessageBarBody></MessageBar>
+      {!row && <p className="workspace-secondary">Start from the accepted meeting review, refine your assessment, then record your decision.</p>}
       {error && <MessageBar intent="error"><MessageBarBody>{error}</MessageBarBody></MessageBar>}
       {!state && !error && <p role="status">Loading saved human review…</p>}
-      <Button disabled={busy} onClick={()=>{if(dirty)setDialog('reload');else void reload();}}>Reload saved review</Button>
-      <section aria-label="Accepted review source" className="ea-final-source">
-        <h3>AI review source</h3>
+      <div className="ea-final-utility"><Button appearance="subtle" disabled={busy} onClick={()=>{if(dirty)setDialog('reload');else void reload();}}>Reload saved review</Button></div>
+      <details aria-label="Accepted review source" className="ea-final-source" open={!row}>
+        <summary>AI review source <span className="ea-final-source-hint">Read-only reference</span></summary>
         {acceptedReview ? <>
           <p>Accepted: {new Date(acceptedReview.acceptedAt).toLocaleString()} · Version {acceptedReview.version??'not supplied'}</p>
           <details><summary>Read AI source review (read-only)</summary><EAReviewReader text={acceptedReview.text}/></details>
         </> : <p>Accept a meeting review in Review meeting before creating the human assessment draft.</p>}
-        <Button appearance="primary" disabled={!canEdit || !acceptedReview?.id || !acceptedReview.text.trim()}
+        {(!row || row.status==='Draft') && <Button appearance={row ? 'secondary' : 'primary'} disabled={!canEdit || !acceptedReview?.id || !acceptedReview.text.trim()}
           onClick={()=>{if(row)setDialog('replace');else create();}}>
-          {row ? 'Replace draft from accepted review' : 'Create human final review from AI review'}</Button>
+          {row ? 'Replace draft from accepted review' : 'Create human final review from AI review'}</Button>}
         {(!canClose || readOnly || (state && !state.canEdit && !state.canReopen && row?.status!=='Submitted')) &&
           <p>Only the assigned primary EA or Admin can edit this final assessment.</p>}
-      </section>
+      </details>
       {row && draft && <section aria-label="Editable human assessment" className="ea-final-draft">
         <h3>{row.status==='Submitted' ? 'Submitted human final review' : 'Editable human final review'}</h3>
-        <p>Source AI review ID: {row.sourceReviewId}. You may keep the copied text unchanged.</p>
+        <div className="ea-final-summary">
+          <div><span>EA decision</span><strong className={`ea-final-decision ea-final-decision--${draft.decision==='Approved' ? 'approved' : draft.decision==='Rejected' ? 'rejected' : 'pending'}`}>{draft.decision??'Not selected'}</strong></div>
+          <div><span>Solution complexity</span><strong>{draft.complexity??'Not selected'}</strong></div>
+          <div><span>{row.status==='Submitted' ? 'Submitted by' : 'Last saved by'}</span><strong>{row.submittedBy??row.updatedBy}</strong><small>{new Date(row.submittedAt??row.updatedAt).toLocaleString()}</small></div>
+        </div>
+        {row.status==='Draft' && <div className="ea-final-mode" role="group" aria-label="Human review display mode">
+          <Button appearance={!preview ? 'primary' : 'secondary'} aria-pressed={!preview} onClick={()=>setPreview(false)}>Edit review</Button>
+          <Button appearance={preview ? 'primary' : 'secondary'} aria-pressed={preview} onClick={()=>setPreview(true)}>Preview review</Button>
+          <span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+        </div>}
         {sourceChanged && <MessageBar intent="warning"><MessageBarBody>The AI source or meeting evidence has changed.
           Your human review has been preserved. Review the current accepted source before submitting; replacing a draft requires confirmation.</MessageBarBody></MessageBar>}
-        {state?.sourceReview?.id===row.sourceReviewId && state.sourceReview.text && <details><summary>Read the source copied into this draft</summary><EAReviewReader text={state.sourceReview.text}/></details>}
-        <fieldset disabled={!canEdit} className="ea-final-fields"><legend>Human EA fields</legend>
+        {(row.status==='Submitted' || preview) && <section className="ea-final-report" aria-label="Formatted human final review">
+          <section><h3>Final technology stack</h3><div className="ea-final-tech-tags">{draft.technologyStack.split(',').filter(x=>x.trim()).map((x,i)=><span key={i}>{x.trim()}</span>)}</div>
+            {!draft.technologyStack.trim() && <p>Not recorded</p>}<h4>Technology rationale</h4><p>{draft.technologyRationale||'Not recorded'}</p></section>
+          <section><h3>Architecture assessment</h3><EAReviewReader text={draft.reviewText}/></section>
+          <section className="ea-final-decision-section"><h3>Decision rationale</h3><p>{draft.decisionRationale||'Not recorded'}</p>
+            <h4>Conditions and outstanding work</h4><p>{draft.conditions||'No conditions recorded.'}</p></section>
+          <section><h3>Architecture diagram evidence</h3><p>{row.status==='Submitted' && !draft.diagramId && (draft.diagramRequirement??'Required')==='Required' && ['Approved','Conditional approval'].includes(draft.decision??'') ? 'Diagram evidence was not recorded with this earlier submission.' : `${draft.diagramRequirement??'Required'} · ${row.diagramFileName||'No diagram linked'}`}</p>
+            {draft.diagramConfirmed&&<p>Human EA confirmed this diagram represents the assessed solution.</p>}
+            {draft.diagramJustification&&<p>{draft.diagramJustification}</p>}{draft.diagramOwner&&<p>Owner: {draft.diagramOwner} · Due: {draft.diagramDueDate}</p>}
+          </section>
+        </section>}
+        {row.status!=='Submitted' && !preview && <fieldset disabled={!canEdit} className="ea-final-fields"><legend>1. Solution and rationale</legend>
           <label className="session-field">Final technology stack<Textarea aria-label="Final technology stack" value={draft.technologyStack}
             maxLength={2000} rows={2} onChange={(_,d)=>change({technologyStack:d.value})}/></label>
           <p className="workspace-secondary">Confirm the final choices independently. They may differ from the proposed stack.</p>
           <label className="session-field">Technology rationale<Textarea aria-label="Final technology rationale" value={draft.technologyRationale}
             maxLength={4000} rows={3} onChange={(_,d)=>change({technologyRationale:d.value})}/></label>
-          <details open><summary>Edit human assessment text</summary><label className="session-field">Final assessment text
+          <h3 className="ea-final-step">2. Architecture assessment</h3><p className="workspace-secondary">Refine the review below or keep it unchanged. Use Preview review to read the formatted report.</p><label className="session-field">Final assessment text
             <Textarea aria-label="Final assessment text" value={draft.reviewText} maxLength={20000} rows={14} resize="vertical"
-              onChange={(_,d)=>change({reviewText:d.value})}/></label></details>
-          <details><summary>Preview human assessment text</summary><EAReviewReader text={draft.reviewText}/></details>
+              onChange={(_,d)=>change({reviewText:d.value})}/></label>
+          <h3 className="ea-final-step">3. Human EA decision</h3>
           <label className="session-field">EA complexity<Select aria-label="Human EA complexity" value={draft.complexity??''}
             onChange={(_,d)=>change({complexity:d.value as HumanFields['complexity'] || null})}>
             <option value="">Select complexity</option>{['Low','Medium','High'].map(x=><option key={x}>{x}</option>)}</Select></label>
@@ -192,15 +224,32 @@ function HumanReviewEditor({canClose,readOnly=false,project,items,currentDiagram
             maxLength={4000} rows={3} onChange={(_,d)=>change({decisionRationale:d.value})}/></label>
           <label className="session-field">Conditions and outstanding work<Textarea aria-label="Human EA conditions" value={draft.conditions}
             maxLength={4000} rows={3} onChange={(_,d)=>change({conditions:d.value})}/></label>
-        </fieldset>
-        <p className="workspace-secondary">Reference only: {items.filter(i=>i.status==='Open').length} open EA items · Current diagram: {currentDiagram?.fileName??'None selected'}.</p>
-        <div className="ea-review-toolbar"><Badge color={dirty ? 'warning' : 'informative'}>{dirty ? 'Unsaved changes' : 'Saved to database'}</Badge>
+          <h3 className="ea-final-step">4. Architecture diagram evidence</h3>
+          <label className="session-field">Diagram requirement<Select aria-label="Diagram requirement" value={draft.diagramRequirement??'Required'} onChange={(_,d)=>change({diagramRequirement:d.value as HumanFields['diagramRequirement'],diagramConfirmed:false,...(d.value!=='Required' ? {diagramId:null} : {})})}>
+            <option>Required</option><option>Not applicable</option><option>Pending</option></Select></label>
+          {(draft.diagramRequirement??'Required')==='Required' && <>
+            <p>Selected diagram: <strong>{draft.diagramId ? (currentDiagram && currentDiagram.id===draft.diagramId ? currentDiagram.fileName : row.diagramFileName)||draft.diagramId : 'None selected'}</strong></p>
+            <p className="workspace-secondary">Upload or choose a saved version in Architecture diagrams below.</p>
+            <Checkbox label="I have reviewed this diagram and confirm it represents the assessed solution" checked={draft.diagramConfirmed??false} disabled={!draft.diagramId} onChange={(_,d)=>change({diagramConfirmed:!!d.checked})}/>
+          </>}
+          {draft.diagramRequirement!=='Required' && draft.diagramRequirement && <label className="session-field">Diagram justification<Textarea aria-label="Diagram justification" value={draft.diagramJustification??''} maxLength={2000} onChange={(_,d)=>change({diagramJustification:d.value})}/></label>}
+          {draft.diagramRequirement==='Pending' && <><p className="workspace-secondary">A pending diagram is permitted only for conditional approval. Record the diagram work in your conditions.</p>
+            <label className="session-field">Diagram action owner<Input aria-label="Diagram action owner" value={draft.diagramOwner??''} maxLength={320} onChange={(_,d)=>change({diagramOwner:d.value})}/></label>
+            <label className="session-field">Diagram due date<Input aria-label="Diagram due date" type="date" value={draft.diagramDueDate??''} onChange={(_,d)=>change({diagramDueDate:d.value||null})}/></label></>}
+        </fieldset>}
+        <p className="workspace-secondary ea-final-diagram-note">Assessment diagram: {draft.diagramRequirement==='Required' ? (currentDiagram && currentDiagram.id===draft.diagramId ? currentDiagram.fileName : row.diagramFileName)||'None selected' : draft.diagramRequirement}.</p>
+        <div className="ea-review-toolbar ea-final-actions">
+          {row.status==='Draft' && <><Badge color={dirty ? 'warning' : 'informative'}>{dirty ? 'Unsaved changes' : 'Saved to database'}</Badge>
           <Button appearance="primary" disabled={!canEdit || !dirty || !draft.reviewText.trim()} onClick={save}>Save draft</Button>
-          <Button disabled={!canSubmit} onClick={()=>setDialog('submit')}>Submit final EA decision</Button>
-          {row.status==='Submitted' && <Button disabled={!canReopen} onClick={()=>setDialog('reopen')}>Reopen human review</Button>}
+          <Button appearance="primary" disabled={!canSubmit} onClick={()=>setDialog('submit')}>Submit final EA decision</Button></>}
+          {row.status==='Submitted' && <Button appearance="primary" disabled={!canReopen} onClick={()=>setDialog('reopen')}>Reopen human review</Button>}
         </div>
-        {row.status==='Draft' && <p>Submission requires saved text, complexity, a decision and decision rationale. Approval requires a final stack and technology rationale; conditional approval also requires conditions.</p>}
-        {row.submittedAt && <p>Submitted by {row.submittedBy} · {new Date(row.submittedAt).toLocaleString()}</p>}
+        {row.status==='Draft' && <p className="ea-final-help">Save your draft before submitting. Complete complexity, decision and rationale; approvals also need the final stack and technology rationale. Approval also requires a confirmed diagram or justified Not applicable choice. A pending diagram requires conditional approval, a reason, owner and due date.</p>}
+        {row.status==='Submitted' && <p className="ea-final-help">This submitted version is read-only. Reopen it to create a new draft; the submitted record is retained.</p>}
+        <details className="ea-final-provenance"><summary>AI source & human version details</summary><p>Source AI review ID: {row.sourceReviewId}</p>
+          <p>Human review version {row.version} · Revision {row.revision}</p>{row.diagramId&&<p>Linked diagram ID: {row.diagramId}</p>}
+          {state?.sourceReview?.id===row.sourceReviewId && state.sourceReview.text && <><h4>Original AI review used for this assessment (read-only)</h4><EAReviewReader text={state.sourceReview.text}/></>}
+        </details>
       </section>}
       {notice && <p role="status"><strong>{notice}</strong></p>}
       {!!state?.history.length && <details><summary>Saved human review history ({state.history.length})</summary>
@@ -215,7 +264,7 @@ function HumanReviewEditor({canClose,readOnly=false,project,items,currentDiagram
           {history.snapshots.map(s=><details key={s.id}><summary>{s.action} · Revision {s.review.revision} · {s.recordedBy} · {new Date(s.recordedAt).toLocaleString()}</summary>
             {s.reason && <p>Reason: {s.reason}</p>}<EAReviewReader text={s.review.reviewText}/>
             <p>Stack: {s.review.technologyStack} · Complexity: {s.review.complexity??'Not selected'} · Decision: {s.review.decision??'Not selected'}</p>
-            <p>Technology rationale: {s.review.technologyRationale}</p><p>Decision rationale: {s.review.decisionRationale}</p><p>Conditions: {s.review.conditions}</p>
+            <p>Technology rationale: {s.review.technologyRationale}</p><p>Decision rationale: {s.review.decisionRationale}</p><p>Conditions: {s.review.conditions}</p><p>Diagram: {s.review.diagramFileName||s.review.diagramRequirement||'Not recorded'} · Human confirmed: {s.review.diagramConfirmed ? 'Yes' : 'No'}</p>{s.review.diagramJustification&&<p>{s.review.diagramJustification}</p>}{s.review.diagramOwner&&<p>Diagram owner: {s.review.diagramOwner} · Due: {s.review.diagramDueDate}</p>}
           </details>)}
         </section>}
         {state.events.filter(e=>e.reason).map(e=><p key={e.id}>{e.action} by {e.createdBy}: {e.reason}</p>)}
@@ -226,6 +275,7 @@ function HumanReviewEditor({canClose,readOnly=false,project,items,currentDiagram
       <DialogContent>
         {dialog==='submit' && <p>This submits your saved human review as the final EA assessment with decision <strong>{draft?.decision}</strong> and complexity <strong>{draft?.complexity}</strong>.
           The submitted version becomes read-only. It does not grant Security or RAI approval.</p>}
+        {dialog==='submit'&&<p>Diagram evidence: {draft?.diagramRequirement??'Required'}{draft?.diagramConfirmed ? ' · Confirmed by human EA' : ''}{draft?.diagramJustification ? ` · ${draft.diagramJustification}` : ''}{draft?.diagramOwner ? ` · Owner: ${draft.diagramOwner} · Due: ${draft.diagramDueDate}` : ''}</p>}
         {dialog==='replace' && <p>A new draft will be copied from the current accepted AI review. The saved human version remains in history; unsaved edits will be discarded.</p>}
         {dialog==='reload' && <p>Your unsaved edits will be discarded. The latest saved version will be loaded from the database.</p>}
         {dialog==='reopen' && <><p>The submitted version remains unchanged. A new draft is created and the project EA status returns to Pending.</p>

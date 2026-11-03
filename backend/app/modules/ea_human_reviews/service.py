@@ -4,10 +4,10 @@ import json
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import select
-from app.db.models import EAHumanReview, EAHumanReviewEvent, EAMeetingReview, EAReviewMeeting, utc_now
+from app.db.models import EAArchitectureDiagram, EAHumanReview, EAHumanReviewEvent, EAMeetingReview, EAReviewMeeting, utc_now
 from app.modules.ea_meeting_reviews import service as ai
 
-FIELDS=('review_text','technology_stack','technology_rationale','complexity','decision','decision_rationale','conditions')
+FIELDS=('review_text','technology_stack','technology_rationale','complexity','decision','decision_rationale','conditions','diagram_id','diagram_confirmed','diagram_requirement','diagram_justification','diagram_owner','diagram_due_date')
 
 def name(user):
     value=str(user.get('name') or user.get('username') or 'Reviewer')
@@ -55,7 +55,9 @@ def changed(session,project,row):
 def view(row):
     return dict(id=str(row.id),version=row.version,revision=row.revision,status=row.status,
         sourceReviewId=str(row.source_review_id),parentReviewId=str(row.parent_review_id) if row.parent_review_id else None,
-        **{''.join([key.split('_')[0]]+[part.title() for part in key.split('_')[1:]]):getattr(row,key) for key in FIELDS},
+        diagramFileName=row.diagram_file_name,
+        **{''.join([key.split('_')[0]]+[part.title() for part in key.split('_')[1:]]):
+            str(getattr(row,key)) if key in ('diagram_id','diagram_due_date') and getattr(row,key) is not None else getattr(row,key) for key in FIELDS},
         createdAt=ai.iso(row.created_at),updatedAt=ai.iso(row.updated_at),createdBy=row.created_by_name,
         updatedBy=row.updated_by_name,submittedAt=ai.iso(row.submitted_at),submittedBy=row.submitted_by_name)
 
@@ -143,7 +145,13 @@ def save(session,demand_id,review_id,request_id,data,user):
         prior=replay(session,project,request_id,digest,user)
         if prior:return view(prior)
         current(session,project,row,data.expected_revision)
+        diagram=None
+        if data.diagram_id:
+            diagram=session.get(EAArchitectureDiagram,data.diagram_id)
+            if not diagram or diagram.project_id!=project.id or diagram.status!='Ready':
+                raise HTTPException(422,'Select a saved diagram from this project.')
         for field in FIELDS:setattr(row,field,getattr(data,field))
+        row.diagram_file_name=diagram.file_name if diagram else '' 
         row.updated_at=utc_now();row.updated_by=ai.oid(user);row.updated_by_name=name(user)
         audit(session,project,row,request_id,'Save',digest,user)
         return view(row)
@@ -164,6 +172,17 @@ def submit(session,demand_id,review_id,request_id,data,user):
             raise HTTPException(422,'Approval requires a final technology stack and rationale.')
         if row.decision=='Conditional approval' and not row.conditions.strip():
             raise HTTPException(422,'Conditional approval requires conditions and outstanding work.')
+        if row.decision in ['Approved','Conditional approval']:
+            if row.diagram_requirement=='Not applicable':
+                if not row.diagram_justification.strip():
+                    raise HTTPException(422,'Explain why an architecture diagram is not applicable.')
+            elif row.diagram_requirement=='Pending':
+                if row.decision!='Conditional approval' or not row.diagram_justification.strip() or not row.diagram_owner.strip() or not row.diagram_due_date:
+                    raise HTTPException(422,'A pending diagram requires conditional approval, a reason, owner and due date.')
+            else:
+                diagram=session.get(EAArchitectureDiagram,row.diagram_id) if row.diagram_id else None
+                if not diagram or diagram.project_id!=project.id or diagram.status!='Ready' or not row.diagram_confirmed:
+                    raise HTTPException(422,'Approval requires a saved architecture diagram confirmed by the human EA.')
         row.status='Submitted';row.submitted_at=utc_now();row.submitted_by=ai.oid(user);row.submitted_by_name=name(user)
         row.updated_at=row.submitted_at;row.updated_by=ai.oid(user);row.updated_by_name=name(user)
         project.ea_status=row.decision;project.ea_complexity=row.complexity;project.updated_at=utc_now()
@@ -181,8 +200,8 @@ def reopen(session,demand_id,review_id,request_id,data,user):
         # Copy human fields, never regenerate from AI or mutate the submitted version.
         draft=EAHumanReview(id=uuid4(),project_id=project.id,version=row.version+1,status='Draft',
             source_review_id=row.source_review_id,source_input_digest=row.source_input_digest,
-            source_text_sha256=row.source_text_sha256,parent_review_id=row.id,
-            **{field:getattr(row,field) for field in FIELDS},created_by=ai.oid(user),created_by_name=name(user),
+            source_text_sha256=row.source_text_sha256,parent_review_id=row.id,diagram_file_name=row.diagram_file_name,
+            **{field:(False if field=='diagram_confirmed' else getattr(row,field)) for field in FIELDS},created_by=ai.oid(user),created_by_name=name(user),
             updated_by=ai.oid(user),updated_by_name=name(user))
         session.add(draft)
         project.ea_status='Pending';project.ea_complexity='Not assessed';project.updated_at=utc_now()
