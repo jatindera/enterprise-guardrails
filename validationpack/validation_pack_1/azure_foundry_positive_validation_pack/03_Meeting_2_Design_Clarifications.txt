@@ -1,0 +1,28 @@
+FICTIONAL TEST TRANSCRIPT — NOT A REAL MEETING OR APPROVAL
+Project: Internal Policy Helpdesk Web App | Demand: 6382
+Meeting 2: Scope and design clarification | Date: 11 November 2026 (synthetic)
+EA facilitator: Assigned EA (testuser-ea@raspbians.com). Participants: Priya Nair, David Lee, Elena Ortiz, Samir Patel, Maya Chen, Victor Cruz (Operations).
+
+[00:00] Assigned EA: Confirm the release boundary.
+[00:12] Priya: Phase 1 is internal browser access for 60 users, no external guests or mobile-offline mode. Features are approved-article search, cited AI Q&A and a manual support request form. No autonomous tools or ticket submission by the AI.
+[01:02] Assigned EA: Clarify the approved knowledge source and changes.
+[01:15] Elena: IT Support owns a curated release set of 70 approved articles; 10 drafts and all restricted runbooks are excluded. Each article has owner, approval state, access group and revision. Updates are published by an editor with a second-person approval. Search results must respect group access and stale versions must be removed from retrieval.
+[02:10] Assigned EA: What is the authoritative data scope?
+[02:22] Samir: For this fictional scenario, approved article content is Office Only. Support form fields contain employee name, work email, category and description; these records are Confidential. No passwords, secrets or regulated personal documents are accepted. Warn against sensitive text and redact common secret patterns; block/flag suspected sensitive content. Final Security assessment remains independent.
+[03:20] Assigned EA: Authentication and permissions?
+[03:32] David: Use existing Microsoft Entra ID employee sign-in. User: view authorized articles and submit requests. Editor: propose changes. Publisher: approve and publish. Administrator: manage configuration, not unrestricted reading. Backend must enforce authorization; no anonymous access.
+[04:30] Assigned EA: What are the support form integrations?
+[04:42] Elena: No ticketing-system API in Phase 1. Form writes to the application database and sends a notification to an internal support mailbox through an approved email integration. No external API or SAP/HR integration.
+[05:25] Assigned EA: Where do model inputs and logs belong?
+[05:38] Samir: Do not store full raw question text or answer content in operational telemetry. Store restricted support requests for 90 days, then delete subject to an approved hold. Keep redacted diagnostic event metadata for 30 days. Do not enable training on company prompts or documents; validate the actual provider terms and configured settings.
+[06:30] Assigned EA: Define quality and performance targets.
+[06:42] Maya: Pilot test set is 60 curated questions: 40 answerable, 10 out-of-scope and 10 adversarial/sensitive. Targets: at least 90% correct grounded answers on the 40 answerable questions, 100% citations for those answers, and zero unsafe execution/actions; out-of-scope questions should abstain and direct users to support. A human evaluator will review failures and re-test after corrections.
+[07:44] Assigned EA: Availability and scale?
+[07:56] Victor: Business-hours service, 8 AM–6 PM on weekdays. Pilot load test for 10 concurrent users; target 95th-percentile web page response under 3 seconds excluding AI generation, and AI response under 12 seconds for the pilot test. Proposed RTO 8 hours and RPO 24 hours. If AI is down, search and manual support form remain available.
+[08:58] Assigned EA: Budget and operating ownership?
+[09:10] David: The sponsor sets a $350/month operating target for the pilot, including hosting, model, search and monitoring, subject to actual Azure pricing and usage. Set cost alerts, a model call rate limit and an initial monthly token budget. Operations owns first-line support; Business Applications owns application changes.
+[10:00] Assigned EA: Do we require Foundry or can we run without it?
+[10:12] Priya: We want to evaluate Foundry as a candidate because grounded Q&A is an explicit requirement, but a search-only fallback remains mandatory. EA will choose the candidate architecture for pilot evaluation, not claim deployment approval.
+[10:55] Assigned EA: What is still open?
+[11:07] David: We need to finalize the concrete Azure service proposal, confirm that the pilot budget and retention/security controls are feasible, record evaluation evidence and validate deployment/networking assumptions in a final meeting.
+[11:38] Assigned EA: These are requirements and planned safeguards, not evidence that resources are deployed or controls tested. No formal approvals granted.

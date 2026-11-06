@@ -1,0 +1,27 @@
+FICTIONAL TEST TRANSCRIPT — NOT A REAL MEETING OR APPROVAL
+Project: Internal Policy Helpdesk Web App | Demand: 6382
+Meeting 3: Final requirements closure and pilot design agreement | Date: 13 November 2026 (synthetic)
+EA facilitator: Assigned EA (testuser-ea@raspbians.com). Participants: Priya Nair, David Lee, Elena Ortiz, Samir Patel, Maya Chen, Victor Cruz.
+All references to evidence are fictional test artifacts and are not real implementation proof or DuPont policy.
+
+[00:00] Assigned EA: Confirm that no business requirement remains undecided.
+[00:10] Priya: Confirmed. Phase 1: internal-only web app for 60 employees, 10 concurrent pilot users, approved FAQ search, cited grounded AI answers, and manual support form. No external access, offline, agent actions, HR/SAP integration, or automatically created tickets.
+[00:52] Assigned EA: Confirm the source boundary and publishing responsibilities.
+[01:02] Elena: Confirmed. Only the 70 approved articles with matching user authorization can be indexed. Editorial owner and second approver are assigned for every article. Revoked or superseded articles must be removed from active retrieval. Restricted runbooks and drafts are excluded.
+[01:48] Assigned EA: Confirm the data classifications and retention.
+[02:00] Samir: Agreed design requirements are Office Only approved articles and Confidential support requests, with employees' business names/emails permitted. Support requests: 90 days with hold exception; redacted operational diagnostic metadata: 30 days. No raw prompts or model outputs in telemetry. Content filtering and input validation are required. These are requirements, not completed Security certification.
+[02:56] Assigned EA: Confirm access and integration.
+[03:09] David: Entra employee login; role-enforced access on APIs and retrieval. The support form uses SQL and approved internal email notification; no ticket platform API in release one. Entra group mapping and email connector choices will be validated at build time, with approved owners.
+[03:53] Assigned EA: Confirm the candidate stack for technical review.
+[04:05] David: For the pilot, we have selected **as the proposed design**: React frontend and FastAPI on Azure App Service, Azure SQL for support-request records and application metadata, Azure Blob Storage for curated articles, Azure AI Search for permission-filtered retrieval, Azure AI Foundry model deployment for cited answer generation, Entra ID for authentication, and Azure Monitor/Application Insights for redacted monitoring. An approved outbound email integration will send notifications. Search-only mode remains available if the model is unavailable. We are not claiming every service has been provisioned or tested.
+[05:08] Assigned EA: Why Foundry rather than AI for everything?
+[05:20] Maya: Foundry is scoped only to answering natural-language IT questions from approved retrieved articles. It will not be used for the support form, workflow approvals or admin actions. We prohibit unsupported answers, enforce citations and abstention, and use a small model with explicit token and rate caps.
+[06:10] Assigned EA: Confirm measurable acceptance criteria and ownership.
+[06:21] Maya: Same 60-question curated evaluation, 90% grounded correctness for answerable queries, 100% citations on answered questions, zero tool/action execution, documented adversarial checks, and reviewer sign-off on the test report. Any failure blocks pilot progression until fixed and re-tested.
+[07:07] Victor: Operations owns incident triage; Business Applications owns fixes; IT Support owns content; Security and RAI will review their respective controls. RTO 8 hours, RPO 24 hours, business-hours support, 10 concurrent users, page p95 under 3 seconds excluding AI, AI answer target under 12 seconds. Search-only/manual escalation are the fallbacks. Backup/restore and outage tests remain implementation acceptance tests, not completed evidence.
+[08:16] Assigned EA: Confirm cost strategy and scope if estimates exceed target.
+[08:27] David: The $350/month is a PILOT TARGET, not a verified quote. Before pilot launch we will capture a region/SKU-specific estimate for App Service, SQL, Search, Foundry tokens, Storage and monitoring. We will configure usage budgets, alerts, rate limits, small-model selection and a kill switch for AI Q&A. If the projection exceeds target, reduce traffic or AI scope and seek sponsor approval; do not assert zero cost.
+[09:28] Assigned EA: Any unresolved **business requirements** to return to the stakeholder group?
+[09:38] Priya: No. All business scope, access, data, functionality, targets, roles and ownership questions have been answered for the pilot. There are delivery validation gates, but no open stakeholder requirement questions.
+[10:08] Samir: Security approval is separate and pending design and test evidence. Maya: RAI approval is separate and pending evaluation evidence.
+[10:27] Assigned EA: The proposed architecture and closed requirements can now be assessed by the EA reviewer. This transcript does not grant an EA decision, ARB outcome, security exception or production authorization.

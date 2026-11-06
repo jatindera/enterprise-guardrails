@@ -35,7 +35,7 @@ export default function ArchitectureDiagrams({project,onCurrentDiagramChange}:Pr
       setSelected(row.id);onCurrentDiagramChange?.({id:row.id,version:index+1,fileName:row.fileName,description:row.description,uploadedAt:row.uploadedAt});
       setNotice('Diagram selected locally. Confirm it and Save draft in the human review above.');
     }catch(e){if(alive.current)setError((e as Error).message);}finally{lock.current=false;if(alive.current)setBusy(false);}}
-  return <section className="content-panel architecture-diagrams"><div className="panel-heading"><h2>Architecture diagrams</h2><Badge>{rows.length} saved versions</Badge></div>
+  return <section id="ea-final-architecture-diagrams" tabIndex={-1} className="content-panel architecture-diagrams"><div className="panel-heading"><h2>Architecture diagrams</h2><Badge>{rows.length} saved versions</Badge></div>
     <div className="workspace-panel-body"><MessageBar><MessageBarBody>Uploaded versions are stored securely and retained as evidence. Selecting a file does not approve it; the human EA must confirm the selected version.</MessageBarBody></MessageBar>
       <Button disabled>Create diagram with AI</Button><p className="workspace-secondary">AI diagram generation remains deferred.</p>
       <h3>Upload a diagram version</h3><label className="session-field">Diagram file<input ref={input} type="file" accept=".png,.jpg,.jpeg,.svg,.pdf,.drawio,.vsdx" disabled={!canUpload||busy} onChange={e=>setFile(e.currentTarget.files?.[0]??null)}/></label>

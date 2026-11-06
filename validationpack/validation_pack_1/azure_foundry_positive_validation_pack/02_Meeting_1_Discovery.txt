@@ -1,0 +1,26 @@
+FICTIONAL TEST TRANSCRIPT — NOT A REAL MEETING OR APPROVAL
+Project: Internal Policy Helpdesk Web App | Demand: 6382
+Meeting 1: Initial discovery | Date: 9 November 2026 (synthetic)
+EA facilitator: Assigned EA (testuser-ea@raspbians.com). Other participants: Priya Nair (Sponsor), David Lee (Delivery), Elena Ortiz (IT Support), Samir Patel (Security liaison), Maya Chen (RAI liaison). All non-EA identities are fictional.
+
+[00:00] Assigned EA: What outcome are we targeting and how will success be measured?
+[00:12] Priya: We want employees to find approved IT answers quickly and submit a ticket when necessary. Our target is 60 internal pilot users. We have not agreed measurable targets yet.
+[01:00] Assigned EA: Why do we need AI rather than ordinary search?
+[01:12] Elena: Employees ask questions in varied language. We want a grounded natural-language answer that points to exact approved help articles. Keyword search remains available. AI should say it cannot answer when no source supports a response.
+[02:05] Assigned EA: Can the AI create tickets, change accounts, or update systems?
+[02:17] David: No autonomous actions. The user may manually submit a support form. The assistant cannot execute administrative commands or access live HR, SAP or other business systems.
+[03:00] Assigned EA: What content is in scope and who publishes it?
+[03:12] Elena: About 80 existing IT knowledge articles might be suitable. Some draft articles and restricted runbooks are mixed in. We have not yet confirmed a content owner, publishing workflow or access boundary.
+[04:05] Assigned EA: What data might users enter?
+[04:17] Samir: Employees may accidentally paste credentials or personal data into the question box. Classification, safe handling, storage, logging and retention are not settled. We must not present this as cleared.
+[05:00] Assigned EA: Who can access the service?
+[05:10] Priya: Internal staff only is our preference. We need confirmation of authentication groups and admin/editor roles. No guest access is requested.
+[06:00] Assigned EA: What scale and availability do we need?
+[06:12] David: Plan for about 60 pilot users and 10 concurrent; daily questions are unknown. Support hours, recovery targets and budgets for model calls still need discussion.
+[07:00] Assigned EA: Is the architecture already fixed to Azure or Foundry?
+[07:13] David: No. We already have Azure expertise, and Foundry is a candidate for the grounded assistant. We want EA to compare it with a simple search-only design before choosing a stack.
+[08:00] Assigned EA: What constitutes acceptable answer quality?
+[08:12] Maya: We need a representative test question set, evidence citations, hallucination checks and a safe fallback. Evaluation criteria are not yet defined.
+[09:00] Assigned EA: What is outstanding?
+[09:12] Priya: Please resolve data classification, approved source set, data retention, roles, nonfunctional targets, evaluation metrics, integration, cost ceiling and operating ownership in the next discussion.
+[09:40] Assigned EA: No implementation controls have been verified and no EA, Security, RAI or production approval has been granted.

@@ -33,8 +33,8 @@ export default function EAReviewProposal({disabled=false,value,dirty,onChange,on
           value={rationale} disabled={disabled} onChange={(_,data)=>{if (!disabled) onChange({...value,rationale:data.value});}}
           placeholder="Explain why this stack is proposed, including relevant constraints or trade-offs. If Others is selected, name those technologies here."/>
       </label>
-      <div className="ea-review-toolbar"><Button disabled={disabled || saveDisabled || !dirty} onClick={onSave}>Save proposal</Button>
-        {dirty && <Button disabled={disabled} onClick={onDiscard}>Discard proposal changes</Button>}</div>
+      <div className="ea-review-toolbar"><Button appearance="primary" disabled={disabled || saveDisabled || !dirty} onClick={onSave}>Save proposal</Button>
+        {dirty && <Button appearance="primary" disabled={disabled} onClick={onDiscard}>Discard proposal changes</Button>}</div>
       {value.updatedAt && <p className="workspace-secondary">Saved by {value.updatedBy ?? "EA reviewer"} · {new Date(value.updatedAt).toLocaleString()}</p>}
       <p className="workspace-secondary">Review meeting with AI automatically saves pending proposal changes first.
         The saved proposal and all Ready transcripts are included in the review. AI may challenge the proposal or ask more questions.

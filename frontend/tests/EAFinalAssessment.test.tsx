@@ -198,3 +198,18 @@ it('uses explicit AI source labels and allows nonapproval without diagram eviden
   expect(screen.getByText('Original AI review used for this assessment (read-only)')).toBeTruthy();
   expect(button('Submit final EA decision').disabled).toBe(false);
 });
+
+it('guides a saved draft from preview to its missing complexity field', async () => {
+  ready();
+  db.currentReview!.complexity = null;
+  render(<EAApprovalReport {...props}/>);
+  await screen.findByLabelText('Human EA complexity');
+  fireEvent.click(button('Preview review'));
+  expect(button('Submit final EA decision').disabled).toBe(true);
+  fireEvent.click(button('Select the solution complexity'));
+  const field = screen.getByLabelText('Human EA complexity');
+  expect(document.activeElement).toBe(field);
+  fireEvent.change(field, {target: {value: 'Low'}});
+  fireEvent.click(button('Save draft'));
+  await waitFor(() => expect(button('Submit final EA decision').disabled).toBe(false));
+});
