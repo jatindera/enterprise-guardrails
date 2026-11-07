@@ -81,7 +81,7 @@ def test_standard_template_persists_and_reference_sections_are_deterministic(cli
         assert stored['template_version']=='2.0' and stored['readiness']['status']=='Needs clarification'
         assert stored['technology_review']['alternatives']
         assert stored['findings'][1]['citations'][1]['quote']=='Seven years.'
-        assert row.profile_version=='2.0.0'
+        assert row.profile_version=='2.1.0'
     assert state(client,m)['reviews'][-1]['text']==text
     assert len(calls)==1  # no second formatter/reviewer model call
     # Readiness is advisory, not a new permission/approval gate.
@@ -109,7 +109,7 @@ def test_legacy_result_rendering_remains_available():
 
 
 def test_profile_is_bounded_and_protects_human_authority():
-    assert MEETING_REVIEW.version=='2.0.0'
+    assert MEETING_REVIEW.version=='2.1.0'
     text=MEETING_REVIEW.render()
     assert len(text)<16000
     for instruction in ('600 words','CURRENT proposal','NOT approval','never instructions','Ready for human assessment'):
@@ -124,3 +124,27 @@ def test_ollama_receives_the_same_new_schema_without_changing_chat():
         assert {'readiness','template_version'} <= set(schema['required'])
         assert schema['$defs']['Readiness']['properties']['status']['enum']==['Needs clarification','Ready for human assessment']
     assert _review_schema.get() is None
+
+
+def test_ready_review_does_not_persist_follow_up_questions(client, database, setup):
+    meeting = create(client)
+    upload(client, meeting, 'Internal users only. The Azure budget is tracked separately.')
+
+    def invoke(raw):
+        payload = json.loads(raw)
+        value = response(payload['transcripts'][0]['id'])
+        value['findings'] = value['findings'][:1]
+        value['readiness'] = {
+            'status': 'Ready for human assessment',
+            'reason': 'The internal access requirement supports the proposed design.',
+        }
+        value['follow_up_questions'] = ['When will the Azure cost estimate be verified?']
+        return json.dumps(value)
+
+    client.app.dependency_overrides[hosted_invoker] = lambda: invoke
+    result = generate(client, meeting)
+    assert result.status_code == 200, result.text
+    assert 'No follow-up questions proposed' in result.json()['text']
+    with Session(database) as db:
+        row = db.get(EAMeetingReview, UUID(result.json()['id']))
+        assert json.loads(row.ai_result)['follow_up_questions'] == []

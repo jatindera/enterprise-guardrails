@@ -471,7 +471,7 @@ def test_backend_supplies_excerpt_from_long_original_line(client,database,setup)
         row=db.get(EAMeetingReview,UUID(response.json()['id']))
         cite=json.loads(row.ai_result)['findings'][0]['citations'][0]
         assert cite['quote']==original[:240] and cite['excerpt_truncated']
-        assert row.profile_version=='2.0.0'
+        assert row.profile_version=='2.1.0'
     assert accept(client,m,response.json()).status_code==200
 
 

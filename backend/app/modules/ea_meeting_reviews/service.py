@@ -399,9 +399,11 @@ def generate(session, demand_id, meeting_id, review_id, expected, user, store, i
             item=finding.model_dump()
             item['citations']=citations
             findings.append(item)
+        # Reserve next-meeting questions for reviews that still need a design decision.
+        questions = referenced.follow_up_questions if referenced.readiness.status == 'Needs clarification' else []
         result=ReviewResult.model_validate(dict(template_version=referenced.template_version,
             readiness=referenced.readiness,summary=referenced.summary,findings=findings,
-            technology_review=referenced.technology_review,follow_up_questions=referenced.follow_up_questions))
+            technology_review=referenced.technology_review,follow_up_questions=questions))
         stage='render'
         text=render(result,labels)
         stage='save'
