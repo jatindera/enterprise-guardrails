@@ -16,3 +16,9 @@ local/azure deployment, same pattern as EA, Policies of DuPont in security and R
 Remove tech stack from the EA assessment last tab.
 
 create dummy data for a project and test EA assessement end to end.
+
+IMPORTANT:
+Create image of architecture diagram alongwith draw.io
+need to add new button. It should explicitly work only with 
+foundry models and give error message if foundry model is not
+configured in .env

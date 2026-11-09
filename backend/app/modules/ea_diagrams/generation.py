@@ -6,6 +6,8 @@ from pydantic import ValidationError
 
 from app.agents.config import FoundrySettings
 from app.agents.enterprise_architecture.diagram import DiagramSettings, generate_diagram
+from app.agents.ollama import OllamaSettings
+from app.modules.ea_preparation.execution import EAExecutionSettings
 from app.modules.ea_human_reviews import service as human_reviews
 from app.modules.ea_meeting_reviews import service as reviews
 from .schemas import GeneratedDiagram
@@ -46,11 +48,21 @@ def review_snapshot(session, demand_id, review_id, user, human_review_id=None, e
 async def render_preview(review_id, version, review_text):
     try:
         mcp_settings = DiagramSettings()
-        model_settings = FoundrySettings()
         if not mcp_settings.token.get_secret_value().strip():
             raise ValueError("Missing MCP bearer token.")
     except (ValidationError, ValueError):
-        raise HTTPException(503, "Configure the diagram MCP connection and Foundry model on the backend.") from None
+        raise HTTPException(503, "Configure the diagram MCP URL and token on the backend.") from None
+
+    try:
+        mode = EAExecutionSettings().execution_mode
+    except ValidationError:
+        raise HTTPException(503, "Configure APP_EA_EXECUTION_MODE on the backend.") from None
+
+    provider = "Ollama" if mode == "ollama" else "Foundry"
+    try:
+        model_settings = OllamaSettings() if mode == "ollama" else FoundrySettings()
+    except ValidationError:
+        raise HTTPException(503, f"Configure the {provider} diagram model on the backend.") from None
 
     try:
         rendered = await generate_diagram(review_text, mcp_settings, model_settings)
@@ -59,5 +71,6 @@ async def render_preview(review_id, version, review_text):
     except TimeoutError:
         raise HTTPException(504, "Diagram generation timed out. Try again.") from None
     except Exception as error:
-        logger.warning("EA diagram generation failed; review_id=%s error=%s", review_id, type(error).__name__)
-        raise HTTPException(502, "Diagram generation failed. Check the diagram MCP server and Foundry model.") from None
+        logger.warning("EA diagram generation failed; review_id=%s provider=%s error=%s",
+                       review_id, provider, type(error).__name__)
+        raise HTTPException(502, f"Diagram generation failed. Check the diagram MCP server and {provider} model.") from None
