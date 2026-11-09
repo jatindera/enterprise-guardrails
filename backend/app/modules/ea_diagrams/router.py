@@ -20,14 +20,20 @@ DemandId = Annotated[str, Path(pattern=r"^[0-9]{1,64}$")]
 def list_files(demand_id: DemandId, session: SessionDep, user: User):
     return service.list_artifacts(session, demand_id)
 
-@router.post("/{demand_id}/ea-assessment/diagrams/generate", response_model=GeneratedDiagram)
+@router.post("/{demand_id}/ea-assessment/diagrams/generate", response_model=GeneratedDiagram, response_model_exclude_none=True)
 async def generate_diagram(demand_id: DemandId, data: GenerateDiagram, session: SessionDep,
                            user: User, response: Response):
     version, review_text = await run_in_threadpool(
         generation.review_snapshot, session, demand_id, data.source_review_id, user,
+        data.human_review_id, data.expected_human_revision,
     )
     result = await generation.render_preview(data.source_review_id, version, review_text)
-    await run_in_threadpool(generation.review_snapshot, session, demand_id, data.source_review_id, user)
+    await run_in_threadpool(
+        generation.review_snapshot, session, demand_id, data.source_review_id, user,
+        data.human_review_id, data.expected_human_revision,
+    )
+    result.human_review_id = data.human_review_id
+    result.human_review_revision = data.expected_human_revision
     response.headers["Cache-Control"] = "no-store"
     return result
 

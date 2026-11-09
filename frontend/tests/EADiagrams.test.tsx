@@ -71,3 +71,27 @@ it('requires a current accepted review and generate permission',()=>{
   expect(generate().disabled).toBe(true);
   expect(diagrams.generateEADiagram).not.toHaveBeenCalled();
 });
+
+it('uses the saved human draft revision and blocks generation while edits are unsaved',async()=>{
+  vi.stubGlobal('URL',class extends URL{
+    static createObjectURL=vi.fn(()=> 'blob:human-diagram');
+    static revokeObjectURL=vi.fn();
+  });
+  const acceptedReview={id:'review-1',version:1,text:'Accepted',acceptedAt:'2026-11-03T05:00:00Z'};
+  const humanReview={id:'human-1',version:1,revision:3,status:'Draft',sourceReviewId:'review-1',
+    technologyStack:'Azure Container Apps'} as import('../src/api/eaHumanReviews').HumanReview;
+  vi.mocked(diagrams.generateEADiagram).mockResolvedValue({
+    sourceReviewId:'review-1',sourceReviewVersion:1,humanReviewId:'human-1',humanReviewRevision:3,
+    drawio:'<mxfile/>',svg:'<svg/>',
+  });
+  const props={project,acceptedReview,humanReview,canGenerate:true};
+  const {rerender}=render(<ArchitectureDiagrams {...props} hasUnsavedHumanEdits/>);
+  const button=()=>screen.getByRole('button',{name:'Generate architecture diagram'}) as HTMLButtonElement;
+  expect(button().disabled).toBe(true);
+  rerender(<ArchitectureDiagrams {...props}/>);
+  fireEvent.click(button());
+  await screen.findByText('Saved human EA draft · revision 3');
+  expect(diagrams.generateEADiagram).toHaveBeenCalledWith('5276','review-1',expect.any(AbortSignal),humanReview);
+  rerender(<ArchitectureDiagrams {...props} humanReview={{...humanReview,revision:4}}/>);
+  expect(screen.queryByRole('heading',{name:'Generated diagram preview'})).toBeNull();
+});

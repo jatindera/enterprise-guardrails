@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.db.models import EAArchitectureDiagram, EAHumanReview, EAHumanReviewEvent, EAMeetingReview, EAReviewMeeting, utc_now
 from app.modules.ea_meeting_reviews import service as ai
 
+ARCHITECTURE_FIELDS = ('review_text', 'technology_stack', 'technology_rationale', 'decision_rationale', 'conditions')
 FIELDS=('review_text','technology_stack','technology_rationale','complexity','decision','decision_rationale','conditions','diagram_id','diagram_confirmed','diagram_requirement','diagram_justification','diagram_owner','diagram_due_date')
 
 def name(user):
@@ -150,7 +151,11 @@ def save(session,demand_id,review_id,request_id,data,user):
             diagram=session.get(EAArchitectureDiagram,data.diagram_id)
             if not diagram or diagram.project_id!=project.id or diagram.status!='Ready':
                 raise HTTPException(422,'Select a saved diagram from this project.')
+        architecture_changed = any(getattr(row, field) != getattr(data, field)
+                                   for field in ARCHITECTURE_FIELDS)
         for field in FIELDS:setattr(row,field,getattr(data,field))
+        if architecture_changed:
+            row.diagram_confirmed = False
         row.diagram_file_name=diagram.file_name if diagram else '' 
         row.updated_at=utc_now();row.updated_by=ai.oid(user);row.updated_by_name=name(user)
         audit(session,project,row,request_id,'Save',digest,user)

@@ -14,6 +14,7 @@ import "./EAFinalAssessment.css";
 interface Props {
   canClose:boolean; readOnly?:boolean; project:Project;
   currentDiagram:CurrentDiagramReference|null; acceptedReview:AcceptedMeetingReview|null;
+  onDraftStateChange?:(row:HumanReview|null,dirty:boolean,ready:boolean)=>void;
 }
 function fields(row:HumanReview):HumanFields {
   return {reviewText:row.reviewText,technologyStack:row.technologyStack,technologyRationale:row.technologyRationale,
@@ -25,7 +26,7 @@ function fields(row:HumanReview):HumanFields {
 export default function EAApprovalReport(props:Props) {
   return <HumanReviewEditor key={props.project.demandId} {...props}/>;
 }
-function HumanReviewEditor({canClose,readOnly=false,project,currentDiagram,acceptedReview}:Props) {
+function HumanReviewEditor({canClose,readOnly=false,project,currentDiagram,acceptedReview,onDraftStateChange}:Props) {
   const updateProject=useContext(ProjectUpdateContext);
   const [state,setState]=useState<HumanState|null>(null);
   const [row,setRow]=useState<HumanReview|null>(null);
@@ -126,9 +127,15 @@ function HumanReviewEditor({canClose,readOnly=false,project,currentDiagram,accep
     window.addEventListener('beforeunload',warn);return ()=>window.removeEventListener('beforeunload',warn);
   },[dirty]);
 
+  useEffect(()=>{
+    onDraftStateChange?.(row,dirty,state!==null && !blocked && !busy);
+  },[onDraftStateChange,row,dirty,state,blocked,busy]);
+
   function change(patch:Partial<HumanFields>) {
     if(!canEdit)return;
-    setDraft(value=>value ? {...value,...patch} : value);setDirty(true);dirtyRef.current=true;setNotice('');
+    const architectureChanged = (['reviewText','technologyStack','technologyRationale','decisionRationale','conditions'] as const)
+      .some(field=>patch[field]!==undefined && patch[field]!==draft?.[field]);
+    setDraft(value=>value ? {...value,...patch,...(architectureChanged?{diagramConfirmed:false}:{})} : value);setDirty(true);dirtyRef.current=true;setNotice('');
   }
   async function reload() {
     if(lock.current)return;lock.current=true;setBusy(true);++loadSequence.current;

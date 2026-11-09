@@ -95,3 +95,41 @@ def test_generation_uses_current_saved_review_and_checks_permission(client, data
     }
     assert client.post(url, json={"sourceReviewId": review["id"]}).status_code == 403
     assert len(calls) == 1
+
+
+def test_generation_uses_saved_human_design_and_rejects_stale_revision(client,database,setup,monkeypatch):
+    from app.modules.ea_diagrams.schemas import GeneratedDiagram
+
+    _, review = source(client)
+    human = draft(client,review).json()
+    human = save(client,human,technologyStack='Azure Container Apps',technologyRationale='Host the approved API.').json()
+    calls = []
+
+    async def render_preview(review_id, version, text):
+        calls.append(text)
+        return GeneratedDiagram(source_review_id=review_id,source_review_version=version,drawio='<mxfile/>',svg='<svg/>')
+
+    monkeypatch.setattr('app.modules.ea_diagrams.generation.render_preview', render_preview)
+    body = dict(sourceReviewId=review['id'],humanReviewId=human['id'],expectedHumanRevision=human['revision'])
+    result = client.post(BASE+'/generate',json=body)
+    assert result.status_code==200,result.text
+    assert result.json()['humanReviewRevision']==human['revision']
+    assert calls[0]['authoritative_final_technology_stack']=='Azure Container Apps'
+    assert calls[0]['human_technology_rationale']=='Host the approved API.'
+    assert save(client,human,technologyStack='App Service').status_code==200
+    assert client.post(BASE+'/generate',json=body).status_code==409
+    assert len(calls)==1
+
+
+def test_architecture_edit_clears_saved_diagram_confirmation(client,database,setup):
+    _, review = source(client)
+    human = ready(client,draft(client,review).json()).json()
+    saved = upload(client).json()
+    human = save(client,human,diagramRequirement='Required',diagramId=saved['id'],diagramConfirmed=True).json()
+    assert human['diagramConfirmed'] is True
+    updated = save(client,human,technologyStack='App Service',diagramConfirmed=True).json()
+    assert updated['diagramId']==saved['id']
+    assert updated['diagramConfirmed'] is False
+    assert submit(client,updated).status_code==422
+    confirmed = save(client,updated,diagramConfirmed=True).json()
+    assert submit(client,confirmed).status_code==200

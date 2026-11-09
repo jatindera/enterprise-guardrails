@@ -8,13 +8,16 @@ export const downloadEADiagram=(d:string,id:string)=>request<Blob>(`${base(d)}/$
 export interface GeneratedDiagram {
   sourceReviewId: string;
   sourceReviewVersion: number;
+  humanReviewId?: string;
+  humanReviewRevision?: number;
   drawio: string;
   svg: string;
 }
 
-export const generateEADiagram = (demand: string, sourceReviewId: string, signal?: AbortSignal) =>
+export const generateEADiagram = (demand: string, sourceReviewId: string, signal?: AbortSignal,
+  draft?: {id: string; revision: number}) =>
   request<GeneratedDiagram>(`${base(demand)}/generate`, {
     method: 'POST',
-    body: JSON.stringify({sourceReviewId}),
+    body: JSON.stringify({sourceReviewId, ...(draft ? {humanReviewId:draft.id,expectedHumanRevision:draft.revision} : {})}),
     signal,
   }, 'json', 330000);

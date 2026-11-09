@@ -6,13 +6,14 @@ from pydantic import ValidationError
 
 from app.agents.config import FoundrySettings
 from app.agents.enterprise_architecture.diagram import DiagramSettings, generate_diagram
+from app.modules.ea_human_reviews import service as human_reviews
 from app.modules.ea_meeting_reviews import service as reviews
 from .schemas import GeneratedDiagram
 
 logger = logging.getLogger(__name__)
 
 
-def review_snapshot(session, demand_id, review_id, user):
+def review_snapshot(session, demand_id, review_id, user, human_review_id=None, expected_human_revision=None):
     try:
         project, _ = reviews.project_access(session, demand_id, user, accept=True)
         review = reviews.latest_accepted(session, project)
@@ -23,7 +24,21 @@ def review_snapshot(session, demand_id, review_id, user):
             raise HTTPException(409, "Accept the current EA review before generating a diagram.")
         if not review.review_text or not review.review_text.strip():
             raise HTTPException(422, "The accepted EA review has no text.")
-        return review.version, review.review_text
+        if human_review_id is None:
+            return review.version, review.review_text
+        draft = human_reviews.owned(session, project, human_review_id)
+        human_reviews.current(session, project, draft, expected_human_revision)
+        if draft.source_review_id != review.id or human_reviews.changed(session, project, draft)[1]:
+            raise HTTPException(409, "Update the saved human draft from the current accepted review.")
+        if not draft.technology_stack.strip():
+            raise HTTPException(422, "Enter the final technology stack and save the human draft first.")
+        return review.version, {
+            "authoritative_final_technology_stack": draft.technology_stack,
+            "human_technology_rationale": draft.technology_rationale,
+            "human_review_text": draft.review_text,
+            "human_decision_rationale": draft.decision_rationale,
+            "human_conditions": draft.conditions,
+        }
     finally:
         session.rollback()
 
@@ -43,24 +58,6 @@ async def render_preview(review_id, version, review_text):
                                 drawio=rendered["drawio"], svg=rendered["svg"])
     except TimeoutError:
         raise HTTPException(504, "Diagram generation timed out. Try again.") from None
-        
-    except ValueError as error:
-        known_reasons = {
-            "The diagram MCP tool did not return a successful structured result.",
-            "The diagram model response was incomplete.",
-            "The diagram model must return one object.",
-            "The diagram failed MCP validation.",
-        }
-        reason = str(error)
-        if reason not in known_reasons:
-            reason = type(error).__name__
-
-        logger.warning("EA diagram generation failed; review_id=%s reason=%s", review_id, reason)
-        raise HTTPException(
-            502,
-            "Diagram generation failed. Check the diagram MCP server and Foundry model.",
-        ) from None
-    
     except Exception as error:
         logger.warning("EA diagram generation failed; review_id=%s error=%s", review_id, type(error).__name__)
         raise HTTPException(502, "Diagram generation failed. Check the diagram MCP server and Foundry model.") from None

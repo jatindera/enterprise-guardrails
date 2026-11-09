@@ -1,31 +1,38 @@
 import {useEffect,useRef,useState} from 'react';
 import {Badge,Button,MessageBar,MessageBarBody,Textarea} from '@fluentui/react-components';
 import type {AcceptedMeetingReview,Project} from './types';
+import type {HumanReview} from './api/eaHumanReviews';
 import {getHumanReview} from './api/eaHumanReviews';
 import {listEADiagrams,uploadEADiagram,downloadEADiagram,generateEADiagram} from './api/eaDiagrams';
 import type {GeneratedDiagram,SavedDiagram} from './api/eaDiagrams';
 export interface CurrentDiagramReference {id:string;version:number;fileName:string;description:string;uploadedAt:string}
-interface Props {project:Project;acceptedReview:AcceptedMeetingReview|null;canGenerate?:boolean;onCurrentDiagramChange?:(diagram:CurrentDiagramReference)=>void}
-export default function ArchitectureDiagrams({project,acceptedReview,canGenerate=false,onCurrentDiagramChange}:Props){
+interface Props {project:Project;acceptedReview:AcceptedMeetingReview|null;canGenerate?:boolean;humanReview?:HumanReview|null;hasUnsavedHumanEdits?:boolean;reviewStateReady?:boolean;onCurrentDiagramChange?:(diagram:CurrentDiagramReference)=>void}
+export default function ArchitectureDiagrams({project,acceptedReview,canGenerate=false,humanReview,reviewStateReady=true,hasUnsavedHumanEdits=false,onCurrentDiagramChange}:Props){
   const [rows,setRows]=useState<SavedDiagram[]>([]);const [file,setFile]=useState<File|null>(null);
   const [description,setDescription]=useState('');const [error,setError]=useState('');const [notice,setNotice]=useState('');
   const [busy,setBusy]=useState(false);const [canUpload,setCanUpload]=useState(false);const [canSelect,setCanSelect]=useState(false);
   const [selected,setSelected]=useState<string|null>(null);const input=useRef<HTMLInputElement>(null);const alive=useRef(true);const lock=useRef(false);const uploadIntent=useRef<{file:File;description:string;id:string}|null>(null);
   const demand=project.demandId;
   const reviewId=acceptedReview?.id;
+  const humanId=humanReview?.id;
+  const humanRevision=humanReview?.revision;
+  const generationBlocked=!reviewStateReady || hasUnsavedHumanEdits || Boolean(humanReview &&
+    (humanReview.status!=='Draft'||humanReview.sourceReviewId!==reviewId||!humanReview.technologyStack.trim()));
   const [generated,setGenerated]=useState<{diagram:GeneratedDiagram;file:File;uploadId:string;saved:boolean}|null>(null);
   const [previewUrl,setPreviewUrl]=useState('');
   const [generating,setGenerating]=useState(false);
   const generationRequest=useRef<AbortController|null>(null);
-  const preview=generated && canGenerate && reviewId && generated.diagram.sourceReviewId===reviewId ? generated : null;
+  const preview=generated && canGenerate && reviewId && generated.diagram.sourceReviewId===reviewId &&
+    generated.diagram.humanReviewId===humanId && generated.diagram.humanReviewRevision===humanRevision
+    ? generated : null;
 
   useEffect(()=>{
     return ()=>{generationRequest.current?.abort();};
-  },[demand,reviewId,canGenerate]);
+  },[demand,reviewId,canGenerate,humanId,humanRevision,generationBlocked]);
 
   useEffect(()=>{
     setGenerated(null);
-  },[demand,reviewId]);
+  },[demand,reviewId,humanId,humanRevision]);
 
   useEffect(()=>{
     if(!preview){setPreviewUrl('');return;}
@@ -36,7 +43,7 @@ export default function ArchitectureDiagrams({project,acceptedReview,canGenerate
   },[preview]);
 
   async function generate(){
-    if(!reviewId||!canGenerate||lock.current)return;
+    if(!reviewId||!canGenerate||generationBlocked||lock.current)return;
     const controller=new AbortController();
     generationRequest.current=controller;
     lock.current=true;
@@ -45,12 +52,16 @@ export default function ArchitectureDiagrams({project,acceptedReview,canGenerate
     setError('');
     setNotice('');
     try{
-      const diagram=await generateEADiagram(demand,reviewId,controller.signal);
+      const diagram=humanReview
+        ? await generateEADiagram(demand,reviewId,controller.signal,humanReview)
+        : await generateEADiagram(demand,reviewId,controller.signal);
       if(controller.signal.aborted||!alive.current)return;
-      if(diagram.sourceReviewId!==reviewId||!diagram.drawio?.trim()||!diagram.svg?.trim()){
+      if(diagram.sourceReviewId!==reviewId||diagram.humanReviewId!==humanId||
+         diagram.humanReviewRevision!==humanRevision||!diagram.drawio?.trim()||!diagram.svg?.trim()){
         throw new Error('The API did not return a complete diagram for this review.');
       }
-      const file=new File([diagram.drawio],`architecture-${demand}-review-${diagram.sourceReviewVersion}.drawio`,{type:'application/xml'});
+      const sourceName=humanReview ? `human-${humanReview.version}-revision-${humanReview.revision}` : `review-${diagram.sourceReviewVersion}`;
+      const file=new File([diagram.drawio],`architecture-${demand}-${sourceName}.drawio`,{type:'application/xml'});
       setGenerated({diagram,file,uploadId:crypto.randomUUID(),saved:false});
     }catch(e){
       if(!controller.signal.aborted&&alive.current)setError((e as Error).message);
@@ -62,13 +73,15 @@ export default function ArchitectureDiagrams({project,acceptedReview,canGenerate
   }
 
   async function savePreview(){
-    if(!preview||preview.saved||!canUpload||lock.current)return;
+    if(!preview||preview.saved||!canUpload||generationBlocked||lock.current)return;
     lock.current=true;
     setBusy(true);
     setError('');
     setNotice('');
     try{
-      const description=`AI-generated from accepted EA review version ${preview.diagram.sourceReviewVersion} (${preview.diagram.sourceReviewId}).`;
+      const description=preview.diagram.humanReviewId
+        ? `Generated from saved human EA draft (${preview.diagram.humanReviewId}), revision ${preview.diagram.humanReviewRevision}.`
+        : `AI-generated from accepted EA review version ${preview.diagram.sourceReviewVersion} (${preview.diagram.sourceReviewId}).`;
       const row=await uploadEADiagram(demand,preview.uploadId,preview.file,description);
       if(!alive.current)return;
       setRows(current=>[row,...current.filter(item=>item.id!==row.id)]);
@@ -117,19 +130,28 @@ export default function ArchitectureDiagrams({project,acceptedReview,canGenerate
     }catch(e){if(alive.current)setError((e as Error).message);}finally{lock.current=false;if(alive.current)setBusy(false);}}
   return <section id="ea-final-architecture-diagrams" tabIndex={-1} className="content-panel architecture-diagrams"><div className="panel-heading"><h2>Architecture diagrams</h2><Badge>{rows.length} saved versions</Badge></div>
     <div className="workspace-panel-body"><MessageBar><MessageBarBody>Uploaded versions are stored securely and retained as evidence. Selecting a file does not approve it; the human EA must confirm the selected version.</MessageBarBody></MessageBar>
-      <Button appearance="primary" disabled={!canGenerate||!reviewId||busy} onClick={()=>void generate()}>
+      <Button appearance="primary" disabled={!canGenerate||!reviewId||generationBlocked||busy} onClick={()=>void generate()}>
         {generating?'Generating diagram…':'Generate architecture diagram'}
       </Button>
-      {generating&&<p role="status">Generating a preview from the accepted EA review…</p>}
+      {generating&&<p role="status">Generating a preview…</p>}
       {!canGenerate&&<p className="workspace-secondary">Only the primary EA or an administrator can generate a diagram.</p>}
       {canGenerate&&!reviewId&&<p className="workspace-secondary">Accept the current meeting review to generate a diagram.</p>}
+      {canGenerate&&reviewId&&<p className="workspace-secondary">
+        {!reviewStateReady?'Wait for the saved human EA review to load or reload it above.'
+          :hasUnsavedHumanEdits?'Save your human EA draft before generating or saving a diagram.'
+          :humanReview?.status==='Submitted'?'Reopen the human EA review to generate a new diagram.'
+          :generationBlocked?'Update the human EA draft from the accepted review and save the final technology stack.'
+          :humanReview?'Generation uses the saved human EA draft.':'This early preview uses the accepted meeting review. Create a human EA draft to generate from your final design.'}
+      </p>}
       {preview&&<article className="diagram-version">
         <h3>Generated diagram preview</h3>
-        <p>Accepted EA review version {preview.diagram.sourceReviewVersion}</p>
+        <p>{preview.diagram.humanReviewId
+          ? `Saved human EA draft · revision ${preview.diagram.humanReviewRevision}`
+          : `Accepted meeting review version ${preview.diagram.sourceReviewVersion}`}</p>
         {previewUrl&&<img src={previewUrl} alt="Generated architecture diagram" style={{display:'block',maxWidth:'100%',height:'auto'}}/>}
         <Button onClick={()=>downloadFile(preview.file,preview.file.name)}>Download editable diagram</Button>{' '}
         <Button onClick={()=>downloadFile(new Blob([preview.diagram.svg],{type:'image/svg+xml'}),preview.file.name.replace(/\.drawio$/,'.svg'))}>Download SVG</Button>{' '}
-        <Button appearance="primary" disabled={!canUpload||busy||preview.saved} onClick={()=>void savePreview()}>
+        <Button appearance="primary" disabled={!canUpload||generationBlocked||busy||preview.saved} onClick={()=>void savePreview()}>
           {preview.saved?'Saved as diagram evidence':'Save as diagram evidence'}
         </Button>
       </article>}
