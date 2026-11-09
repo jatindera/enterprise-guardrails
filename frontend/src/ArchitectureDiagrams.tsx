@@ -2,19 +2,99 @@ import {useEffect,useRef,useState} from 'react';
 import {Badge,Button,MessageBar,MessageBarBody,Textarea} from '@fluentui/react-components';
 import type {AcceptedMeetingReview,Project} from './types';
 import {getHumanReview} from './api/eaHumanReviews';
-import {listEADiagrams,uploadEADiagram,downloadEADiagram} from './api/eaDiagrams';
-import type {SavedDiagram} from './api/eaDiagrams';
+import {listEADiagrams,uploadEADiagram,downloadEADiagram,generateEADiagram} from './api/eaDiagrams';
+import type {GeneratedDiagram,SavedDiagram} from './api/eaDiagrams';
 export interface CurrentDiagramReference {id:string;version:number;fileName:string;description:string;uploadedAt:string}
-interface Props {project:Project;acceptedReview:AcceptedMeetingReview|null;onCurrentDiagramChange?:(diagram:CurrentDiagramReference)=>void}
-export default function ArchitectureDiagrams({project,onCurrentDiagramChange}:Props){
+interface Props {project:Project;acceptedReview:AcceptedMeetingReview|null;canGenerate?:boolean;onCurrentDiagramChange?:(diagram:CurrentDiagramReference)=>void}
+export default function ArchitectureDiagrams({project,acceptedReview,canGenerate=false,onCurrentDiagramChange}:Props){
   const [rows,setRows]=useState<SavedDiagram[]>([]);const [file,setFile]=useState<File|null>(null);
   const [description,setDescription]=useState('');const [error,setError]=useState('');const [notice,setNotice]=useState('');
   const [busy,setBusy]=useState(false);const [canUpload,setCanUpload]=useState(false);const [canSelect,setCanSelect]=useState(false);
   const [selected,setSelected]=useState<string|null>(null);const input=useRef<HTMLInputElement>(null);const alive=useRef(true);const lock=useRef(false);const uploadIntent=useRef<{file:File;description:string;id:string}|null>(null);
   const demand=project.demandId;
+  const reviewId=acceptedReview?.id;
+  const [generated,setGenerated]=useState<{diagram:GeneratedDiagram;file:File;uploadId:string;saved:boolean}|null>(null);
+  const [previewUrl,setPreviewUrl]=useState('');
+  const [generating,setGenerating]=useState(false);
+  const generationRequest=useRef<AbortController|null>(null);
+  const preview=generated && canGenerate && reviewId && generated.diagram.sourceReviewId===reviewId ? generated : null;
+
+  useEffect(()=>{
+    return ()=>{generationRequest.current?.abort();};
+  },[demand,reviewId,canGenerate]);
+
+  useEffect(()=>{
+    setGenerated(null);
+  },[demand,reviewId]);
+
+  useEffect(()=>{
+    if(!preview){setPreviewUrl('');return;}
+    // Render SVG as an image so the browser does not execute active SVG content.
+    const url=URL.createObjectURL(new Blob([preview.diagram.svg],{type:'image/svg+xml'}));
+    setPreviewUrl(url);
+    return ()=>URL.revokeObjectURL(url);
+  },[preview]);
+
+  async function generate(){
+    if(!reviewId||!canGenerate||lock.current)return;
+    const controller=new AbortController();
+    generationRequest.current=controller;
+    lock.current=true;
+    setGenerating(true);
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try{
+      const diagram=await generateEADiagram(demand,reviewId,controller.signal);
+      if(controller.signal.aborted||!alive.current)return;
+      if(diagram.sourceReviewId!==reviewId||!diagram.drawio?.trim()||!diagram.svg?.trim()){
+        throw new Error('The API did not return a complete diagram for this review.');
+      }
+      const file=new File([diagram.drawio],`architecture-${demand}-review-${diagram.sourceReviewVersion}.drawio`,{type:'application/xml'});
+      setGenerated({diagram,file,uploadId:crypto.randomUUID(),saved:false});
+    }catch(e){
+      if(!controller.signal.aborted&&alive.current)setError((e as Error).message);
+    }finally{
+      generationRequest.current=null;
+      lock.current=false;
+      if(alive.current){setGenerating(false);setBusy(false);}
+    }
+  }
+
+  async function savePreview(){
+    if(!preview||preview.saved||!canUpload||lock.current)return;
+    lock.current=true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try{
+      const description=`AI-generated from accepted EA review version ${preview.diagram.sourceReviewVersion} (${preview.diagram.sourceReviewId}).`;
+      const row=await uploadEADiagram(demand,preview.uploadId,preview.file,description);
+      if(!alive.current)return;
+      setRows(current=>[row,...current.filter(item=>item.id!==row.id)]);
+      setGenerated(current=>current?.uploadId===preview.uploadId ? {...current,saved:true} : current);
+      setNotice('Diagram saved as evidence. Select and confirm it separately for the human assessment.');
+    }catch(e){
+      if(alive.current)setError((e as Error).message);
+    }finally{
+      lock.current=false;
+      if(alive.current)setBusy(false);
+    }
+  }
+
+  function downloadFile(data:Blob,name:string){
+    const url=URL.createObjectURL(data);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download=name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
   useEffect(()=>{alive.current=true;const controller=new AbortController();
     Promise.all([listEADiagrams(demand,controller.signal),getHumanReview(demand,controller.signal)]).then(([list,state])=>{
-      if(!alive.current)return;setRows(list.items);setCanUpload(state.canEdit||state.canReopen);
+      if(controller.signal.aborted||!alive.current)return;setRows(list.items);setCanUpload(state.canEdit||state.canReopen);
       setCanSelect(state.canEdit);setSelected(state.currentReview?.diagramId??null);
     }).catch(e=>{if(!controller.signal.aborted&&alive.current)setError(e.message);});
     return ()=>{alive.current=false;controller.abort();};
@@ -27,7 +107,7 @@ export default function ArchitectureDiagrams({project,onCurrentDiagramChange}:Pr
     catch(e){if(alive.current)setError((e as Error).message);}finally{lock.current=false;if(alive.current)setBusy(false);}
   }
   async function download(row:SavedDiagram){setError('');try{const data=await downloadEADiagram(demand,row.id);if(!alive.current)return;
-    const url=URL.createObjectURL(data),link=document.createElement('a');link.href=url;link.download=row.fileName;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    downloadFile(data,row.fileName);
   }catch(e){if(alive.current)setError((e as Error).message);}}
   async function choose(row:SavedDiagram,index:number){if(busy||lock.current)return;lock.current=true;setBusy(true);setError('');
     try{const state=await getHumanReview(demand);if(!alive.current)return;setCanSelect(state.canEdit);
@@ -37,7 +117,22 @@ export default function ArchitectureDiagrams({project,onCurrentDiagramChange}:Pr
     }catch(e){if(alive.current)setError((e as Error).message);}finally{lock.current=false;if(alive.current)setBusy(false);}}
   return <section id="ea-final-architecture-diagrams" tabIndex={-1} className="content-panel architecture-diagrams"><div className="panel-heading"><h2>Architecture diagrams</h2><Badge>{rows.length} saved versions</Badge></div>
     <div className="workspace-panel-body"><MessageBar><MessageBarBody>Uploaded versions are stored securely and retained as evidence. Selecting a file does not approve it; the human EA must confirm the selected version.</MessageBarBody></MessageBar>
-      <Button disabled>Create diagram with AI</Button><p className="workspace-secondary">AI diagram generation remains deferred.</p>
+      <Button appearance="primary" disabled={!canGenerate||!reviewId||busy} onClick={()=>void generate()}>
+        {generating?'Generating diagram…':'Generate architecture diagram'}
+      </Button>
+      {generating&&<p role="status">Generating a preview from the accepted EA review…</p>}
+      {!canGenerate&&<p className="workspace-secondary">Only the primary EA or an administrator can generate a diagram.</p>}
+      {canGenerate&&!reviewId&&<p className="workspace-secondary">Accept the current meeting review to generate a diagram.</p>}
+      {preview&&<article className="diagram-version">
+        <h3>Generated diagram preview</h3>
+        <p>Accepted EA review version {preview.diagram.sourceReviewVersion}</p>
+        {previewUrl&&<img src={previewUrl} alt="Generated architecture diagram" style={{display:'block',maxWidth:'100%',height:'auto'}}/>}
+        <Button onClick={()=>downloadFile(preview.file,preview.file.name)}>Download editable diagram</Button>{' '}
+        <Button onClick={()=>downloadFile(new Blob([preview.diagram.svg],{type:'image/svg+xml'}),preview.file.name.replace(/\.drawio$/,'.svg'))}>Download SVG</Button>{' '}
+        <Button appearance="primary" disabled={!canUpload||busy||preview.saved} onClick={()=>void savePreview()}>
+          {preview.saved?'Saved as diagram evidence':'Save as diagram evidence'}
+        </Button>
+      </article>}
       <h3>Upload a diagram version</h3><label className="session-field">Diagram file<input ref={input} type="file" accept=".png,.jpg,.jpeg,.svg,.pdf,.drawio,.vsdx" disabled={!canUpload||busy} onChange={e=>setFile(e.currentTarget.files?.[0]??null)}/></label>
       <label className="session-field">Version description<Textarea value={description} maxLength={4000} disabled={!canUpload||busy} onChange={(_,d)=>setDescription(d.value)}/></label>
       <Button appearance="primary" disabled={!canUpload||busy||!file||!description.trim()} onClick={()=>void upload()}>Add diagram version</Button>

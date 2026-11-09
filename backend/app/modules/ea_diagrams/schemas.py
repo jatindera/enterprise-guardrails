@@ -12,3 +12,14 @@ class ArtifactSummary(APIModel):
 
 class ArtifactPage(APIModel):
     items: list[ArtifactSummary]
+
+
+class GenerateDiagram(APIModel):
+    source_review_id: UUID
+
+
+class GeneratedDiagram(APIModel):
+    source_review_id: UUID
+    source_review_version: int
+    drawio: str
+    svg: str

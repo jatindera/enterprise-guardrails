@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.auth import current_user
 from app.db.session import get_session
 from app.modules.artifacts.storage import artifact_store
-from . import service
-from .schemas import ArtifactPage, ArtifactSummary
+from . import generation, service
+from .schemas import ArtifactPage, ArtifactSummary, GenerateDiagram, GeneratedDiagram
 
 router = APIRouter(prefix="/api/projects", tags=["EA diagram evidence"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -19,6 +19,18 @@ DemandId = Annotated[str, Path(pattern=r"^[0-9]{1,64}$")]
 @router.get("/{demand_id}/ea-assessment/diagrams", response_model=ArtifactPage)
 def list_files(demand_id: DemandId, session: SessionDep, user: User):
     return service.list_artifacts(session, demand_id)
+
+@router.post("/{demand_id}/ea-assessment/diagrams/generate", response_model=GeneratedDiagram)
+async def generate_diagram(demand_id: DemandId, data: GenerateDiagram, session: SessionDep,
+                           user: User, response: Response):
+    version, review_text = await run_in_threadpool(
+        generation.review_snapshot, session, demand_id, data.source_review_id, user,
+    )
+    result = await generation.render_preview(data.source_review_id, version, review_text)
+    await run_in_threadpool(generation.review_snapshot, session, demand_id, data.source_review_id, user)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
 
 @router.put("/{demand_id}/ea-assessment/diagrams/{upload_id}", response_model=ArtifactSummary)
 async def upload_file(demand_id: DemandId, upload_id: UUID, request: Request, session: SessionDep, user: User,

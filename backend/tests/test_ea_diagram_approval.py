@@ -69,3 +69,29 @@ def test_storage_failure_keeps_diagram_pending_and_out_of_ready_list(client,data
     source(client);store,_=setup;store.fail=True
     response=upload(client);assert response.status_code==503,response.text
     assert client.get(BASE).json()['items']==[]
+
+
+def test_generation_uses_current_saved_review_and_checks_permission(client, database, setup, monkeypatch):
+    _, review = source(client)
+    calls = []
+
+    async def render_preview(review_id, version, text):
+        from app.modules.ea_diagrams.schemas import GeneratedDiagram
+        calls.append((str(review_id), version, text))
+        return GeneratedDiagram(source_review_id=review_id, source_review_version=version,
+                                drawio="<mxfile/>", svg="<svg/>")
+
+    monkeypatch.setattr("app.modules.ea_diagrams.generation.render_preview", render_preview)
+    url = BASE + "/generate"
+    assert client.post(url, json={"sourceReviewId": str(uuid4())}).status_code == 409
+    result = client.post(url, json={"sourceReviewId": review["id"]})
+    assert result.status_code == 200, result.text
+    assert result.headers["cache-control"] == "no-store"
+    assert result.json() == {"sourceReviewId": review["id"], "sourceReviewVersion": review["version"],
+                             "drawio": "<mxfile/>", "svg": "<svg/>"}
+    assert calls == [(review["id"], review["version"], review["text"])]
+    client.app.dependency_overrides[current_user] = lambda: {
+        "objectId": str(HELPER), "roles": ["enterprise-architect"],
+    }
+    assert client.post(url, json={"sourceReviewId": review["id"]}).status_code == 403
+    assert len(calls) == 1

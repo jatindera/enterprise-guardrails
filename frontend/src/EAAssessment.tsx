@@ -62,6 +62,7 @@ export default function EAAssessment({
         key={project.demandId}
         project={project}
         acceptedReview={acceptedReview}
+        canGenerate={canClose && !readOnly}
         onCurrentDiagramChange={setCurrentDiagram}
       />
     </section>
