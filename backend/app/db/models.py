@@ -522,3 +522,18 @@ class EAArchitectureDiagram(Base):
     created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, nullable=False, default=utc_now)
     uploaded_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
 
+
+
+class SecurityReviewVersion(Base):
+    """Immutable Security review and evidence history, isolated by project."""
+    __tablename__ = "security_review_versions"
+    __table_args__ = (UniqueConstraint("project_id", "revision"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    revision: Mapped[int] = mapped_column(nullable=False)
+    kind: Mapped[str] = mapped_column(Unicode(20), nullable=False)
+    source_revision: Mapped[int | None] = mapped_column(nullable=True)
+    payload: Mapped[str] = mapped_column(UnicodeText, nullable=False)
+    author_id: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DATETIMEOFFSET, default=utc_now, nullable=False)

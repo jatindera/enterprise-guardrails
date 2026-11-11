@@ -162,6 +162,7 @@ export default function PreparationChat({
   "Chat is held locally while the workspace remains open. Only questions you explicitly add enter the meeting question list.",
 }: PreparationChatProps) {
   const inputId = useId();
+  const assistantDomain = scope === "Security" ? "Security" : "EA";
   const [searchWeb, setSearchWeb] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -197,12 +198,12 @@ export default function PreparationChat({
         if (controller.signal.aborted) return;
         const result = await chatWithEA(project.demandId, prompt,
           messages.map(({ role, text }) => ({ role, text })), controller.signal,
-          searchWeb ? { searchWeb: true } : undefined, chatMode);
+          searchWeb ? { searchWeb: true } : undefined, chatMode, assistantDomain);
         if (controller.signal.aborted) return;
         reply = { id: crypto.randomUUID(), role: "assistant", text: result.text,
           sources: result.sources, webSearched: result.webSearched, searchedAt: result.searchedAt,
           proposedQuestion: result.proposedQuestion ? { ...result.proposedQuestion,
-            id: crypto.randomUUID(), focus: "EA", selected: false, source: "ai" } : undefined };
+            id: crypto.randomUUID(), focus: assistantDomain, selected: false, source: "ai" } : undefined };
       } catch (err) {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not contact the assistant.");
         return;
@@ -241,7 +242,7 @@ export default function PreparationChat({
             <article key={message.id} className={`eg-chat-row eg-chat-row--${message.role}`}>
               {message.role === "assistant" && <span className="eg-chat-avatar" aria-hidden="true">💬</span>}
               <div className={`eg-chat-bubble eg-chat-bubble--${message.role}`}>
-                <strong>{message.role === "user" ? "You" : connected ? "EA assistant" : "Assistant · sample reply"}</strong>
+                <strong>{message.role === "user" ? "You" : connected ? `${assistantDomain} assistant` : "Assistant · sample reply"}</strong>
                 <p className="eg-chat-text">{message.text}</p>
                 {message.webSearched && (
                   <div className="eg-chat-web-sources">
@@ -303,7 +304,7 @@ export default function PreparationChat({
       </div>
       <p className="eg-chat-footer">{connected ? chatMode === "meeting"
         ? "Chat clears on refresh. The assistant cannot hear the meeting; paste relevant answers for help. Questions you explicitly add are saved with this project."
-        : "Chat is a workspace draft and clears on refresh. Messages and project intake are sent to the EA assistant. Only questions you add enter the meeting list." : footerText}</p>
+        : `Chat is a workspace draft and clears on refresh. Messages and project context are sent to the ${assistantDomain} assistant. Only questions you add enter the meeting list.` : footerText}</p>
     </section>
   );
 }

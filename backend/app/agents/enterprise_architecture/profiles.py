@@ -11,13 +11,14 @@ class TaskProfile:
     version: str
     instructions: str
     accepts_conversation: bool = False
+    scope_instructions: str = SCOPE_INSTRUCTIONS
 
     def render(self, *, message: str | None = None,
                history: Sequence[Mapping[str, str]] = ()) -> str:
         if self.accepts_conversation:
             if message is None or not message.strip():
                 raise ValueError('A chat message is required.')
-            task = self.instructions + SCOPE_INSTRUCTIONS + "\n" + json.dumps(
+            task = self.instructions + self.scope_instructions + "\n" + json.dumps(
                 {'history': list(history), 'message': message}, ensure_ascii=False)
         else:
             if message is not None or history:

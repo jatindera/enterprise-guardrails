@@ -1,0 +1,12 @@
+**
+!deployment/
+!deployment/ea-agent/
+!deployment/ea-agent/requirements.lock
+!deployment/security-agent/
+!deployment/security-agent/Dockerfile
+!app/
+!app/agents/
+!app/agents/**
+**/__pycache__/
+**/*.pyc
+.env*

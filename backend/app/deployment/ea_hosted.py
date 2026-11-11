@@ -93,7 +93,8 @@ def deploy(project, release: Release, model: str, name: str, registry_connection
         with operation('create_version'):
             selected = project.agents.create_version(agent_name=name, definition=definition, draft=False,
                 metadata={'eg_release': digest, 'source_commit': release.source_commit, 'build_id': release.build_id},
-                description='Enterprise Guardrails EA preparation agent')
+                description=('Enterprise Guardrails Security agent' if name == 'enterprise-security-agent'
+                             else 'Enterprise Guardrails EA preparation agent'))
     with operation('get_version / wait_for_active'):
         wait_for_active(project.agents, name, selected.version, timeout)
     return {'agentName': name, 'agentVersion': selected.version, 'image': release.image,
@@ -109,7 +110,9 @@ def smoke_test(project, name, version):
     try:
         with operation('hosted responses.create'), project.get_openai_client(agent_name=name, timeout=180, max_retries=0) as client:
             response = client.responses.create(
-                input='In one short sentence, explain what an enterprise architect does. Do not approve any project.',
+                input=('Return JSON with one short Security stakeholder question about vendor access.'
+                       if name == 'enterprise-security-agent' else
+                       'In one short sentence, explain what an enterprise architect does. Do not approve any project.'),
                 store=False, stream=False, extra_body={'agent_session_id': session_id})
         if response.status != 'completed' or not response.output_text or not response.output_text.strip():
             raise RuntimeError('The deployed agent did not return a completed non-empty smoke-test response.')

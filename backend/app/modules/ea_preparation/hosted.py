@@ -21,6 +21,10 @@ class HostedEASettings(BaseSettings):
 def invoke_hosted(payload: str) -> str:
     settings = FoundrySettings()
     hosted = HostedEASettings()
+    return invoke_hosted_agent(payload, settings, hosted)
+
+
+def invoke_hosted_agent(payload, settings, hosted):
     with ExitStack() as stack:
         credential = stack.enter_context(AzureCliCredential() if settings.auth_mode == 'azure_cli'
             else ManagedIdentityCredential(client_id=settings.managed_identity_client_id))
@@ -47,4 +51,4 @@ def invoke_hosted(payload: str) -> str:
                 project.agents.stop_session(agent_name=hosted.agent_name, session_id=session.agent_session_id)
             except Exception as exc:
                 # No payloads, session IDs, credentials or service response bodies in logs.
-                logger.warning('EA session cleanup failed; exception_type=%s', type(exc).__name__)
+                logger.warning('Hosted agent session cleanup failed; exception_type=%s', type(exc).__name__)

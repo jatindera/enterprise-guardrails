@@ -410,9 +410,10 @@ export interface EAQuestionDraft {
   priority: "Essential" | "Follow-up";
 }
 
-export function generateEAQuestions(demandId: string, signal?: AbortSignal) {
+export function generateEAQuestions(demandId: string, signal?: AbortSignal, domain: "EA" | "Security" = "EA") {
+  const preparation = domain === "Security" ? "security-preparation" : "ea-preparation";
   return request<{ questions: EAQuestionDraft[] }>(
-    `/api/projects/${encodeURIComponent(demandId)}/ea-preparation/questions`,
+    `/api/projects/${encodeURIComponent(demandId)}/${preparation}/questions`,
     { method: "POST", signal }, "json", 240000,
   );
 }
@@ -421,10 +422,11 @@ export interface EAWebSource { title: string; url: string }
 
 export function chatWithEA(demandId: string, message: string,
   history: { role: "user" | "assistant"; text: string }[], signal?: AbortSignal,
-  web?: { searchWeb: true }, mode: "prepare" | "meeting" = "prepare") {
+  web?: { searchWeb: true }, mode: "prepare" | "meeting" = "prepare", domain: "EA" | "Security" = "EA") {
+  const preparation = domain === "Security" ? "security-preparation" : "ea-preparation";
   return request<{ text: string; proposedQuestion: EAQuestionDraft | null;
     sources?: EAWebSource[]; webSearched?: boolean; searchedAt?: string | null }>(
-    `/api/projects/${encodeURIComponent(demandId)}/ea-preparation/${mode === "meeting" ? "meeting-chat" : "chat"}`,
+    `/api/projects/${encodeURIComponent(demandId)}/${preparation}/${mode === "meeting" ? "meeting-chat" : "chat"}`,
     { method: "POST", body: JSON.stringify({ message, history, ...web }), signal }, "json", 240000,
   );
 }

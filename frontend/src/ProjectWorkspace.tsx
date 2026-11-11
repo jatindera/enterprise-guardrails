@@ -23,7 +23,6 @@ import type {
 
 import ReviewSession from "./ReviewSession";
 import EAAssessment from "./EAAssessment";
-import SecurityRecord from "./SecurityRecord";
 import RAIAssessment from "./RAIAssessment";
 import ARBReview from "./ARBReview";
 import ProductionGate from "./ProductionGate";
@@ -108,7 +107,6 @@ function ProjectWorkspaceContent({
   }
   const securityAccessCurrent = securityAccess?.revision === project.revision;
   const canEditSecurity = securityAccessCurrent && securityAccess?.canEdit === true;
-  const canCloseSecurity = securityAccessCurrent && securityAccess?.canClose === true;
   const [raiAccess, setRAIAccess] = useState<RAIAccess | null>(null);
   const [raiAccessError, setRAIAccessError] = useState("");
   const [raiAccessAttempt, setRAIAccessAttempt] = useState(0);
@@ -407,7 +405,7 @@ function ProjectWorkspaceContent({
           onAcceptedReviewChange={setSecurityAcceptedReview}
           assessmentTab={{
             label: "Security assessment",
-            render: () => <SecurityRecord project={project} canClose={canCloseSecurity} readOnly={!canEditSecurity} />,
+            render: () => null,
           }}
         />
       </div>

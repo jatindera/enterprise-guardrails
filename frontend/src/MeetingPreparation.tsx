@@ -147,6 +147,7 @@ export default function MeetingPreparation({
 }: MeetingPreparationProps) {
   const access = preparationAccess(useAuth().roles);
   const filter = scope;
+  const connected = scope === "EA" || scope === "Security";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const active = useRef<AbortController | null>(null);
@@ -214,24 +215,24 @@ export default function MeetingPreparation({
 
   async function prepareQuestions() {
     if (!canPrepare || active.current && !active.current.signal.aborted && busy) return;
-    if (scope === "EA") {
+    if (scope === "EA" || scope === "Security") {
       const controller = new AbortController();
       active.current = controller;
       setBusy(true); setError("");
       try {
-        const reply = await generateEAQuestions(project.demandId, controller.signal);
+        const reply = await generateEAQuestions(project.demandId, controller.signal, scope);
         if (controller.signal.aborted) return;
-        // Replace only unselected EA AI drafts after a successful response.
+        // Replace only unselected AI drafts in this domain after a successful response.
         // Manual questions, selected questions and other domains survive unchanged.
         const current = latestQuestions.current.filter(q =>
-          q.focus !== "EA" || isManualQuestion(q) || q.selected === true || lockedQuestionIds.includes(q.id));
-        const existing = new Set(current.filter(q => q.focus === "EA").map(q => q.question.trim().toLowerCase()));
+          q.focus !== scope || isManualQuestion(q) || q.selected === true || lockedQuestionIds.includes(q.id));
+        const existing = new Set(current.filter(q => q.focus === scope).map(q => q.question.trim().toLowerCase()));
         const added: PreparedQuestion[] = [];
         for (const q of reply.questions) {
           const key = q.question.trim().toLowerCase();
           if (existing.has(key)) continue;
           existing.add(key);
-          added.push({ ...q, id: crypto.randomUUID(), focus: "EA", selected: false, source: "ai" });
+          added.push({ ...q, id: crypto.randomUUID(), focus: scope, selected: false, source: "ai" });
         }
         onQuestionsChange([...current, ...added]);
       } catch (err) {
@@ -275,7 +276,7 @@ export default function MeetingPreparation({
         </div>
 
         <Badge appearance="tint" color="warning">
-          {scope === "EA" ? "AI drafts · Review before use" : "Demo suggestions"}
+          {connected ? "AI drafts · Review before use" : "Demo suggestions"}
         </Badge>
       </div>
 
@@ -285,7 +286,7 @@ export default function MeetingPreparation({
           disabled={!canPrepare}
           onClick={prepareQuestions}
         >
-          {busy ? "Preparing questions…" : scope === "EA" && hasAIQuestions ? "Regenerate AI questions" : "Prepare questions with AI"}
+          {busy ? "Preparing questions…" : connected && hasAIQuestions ? "Regenerate AI questions" : "Prepare questions with AI"}
         </Button>
 
         <Button disabled={!canPrepare} onClick={addQuestion}>
@@ -297,7 +298,7 @@ export default function MeetingPreparation({
         </Badge>
       </div>
 
-      {scope === "EA" && hasAIQuestions && (
+      {connected && hasAIQuestions && (
         <p className="workspace-secondary">Regenerating replaces unselected AI questions. Your questions and selected questions are kept.</p>
       )}
       {error && <p role="alert">{error}</p>}
@@ -338,7 +339,7 @@ export default function MeetingPreparation({
           >
             <div className="workspace-tags">
               <Badge appearance="tint" color={manual ? "warning" : "brand"}>
-                {manual ? "Your question" : scope === "EA" ? "AI suggestion" : "AI suggestion · Demo"}
+                {manual ? "Your question" : connected ? "AI suggestion" : "AI suggestion · Demo"}
               </Badge>
               <Badge appearance="tint" color="brand">
                 {question.focus}

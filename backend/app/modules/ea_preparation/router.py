@@ -36,7 +36,7 @@ def authorized_context(session, demand_id, user):
     return context
 
 
-def complete(context, task, response_type, invoke):
+def complete(context, task, response_type, invoke, domain='EA'):
     try:
         payload = preparation_input(context, task)
     except ValueError:
@@ -48,8 +48,8 @@ def complete(context, task, response_type, invoke):
             text = text[8:-3].strip()
         return response_type.model_validate_json(text)
     except Exception as exc:
-        logger.warning('EA preparation failed; exception_type=%s', type(exc).__name__)
-        raise HTTPException(502, 'EA assistant could not complete this request. Check the selected AI provider configuration and access, then retry.') from None
+        logger.warning('%s preparation failed; exception_type=%s', domain, type(exc).__name__)
+        raise HTTPException(502, f'{domain} assistant could not complete this request. Check the selected AI provider configuration and access, then retry.') from None
 
 
 def public_query_planner():

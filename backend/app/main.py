@@ -14,6 +14,10 @@ from app.modules.projects.rai_assignment_router import router as rai_assignment_
 from app.modules.projects.router import router as projects_router
 from app.modules.projects.ea_assignment_router import router as ea_assignment_router
 
+from app.modules.security_preparation.router import router as security_preparation_router
+
+from app.modules.security_reviews.router import router as security_reviews_router
+
 import json
 import logging
 from time import perf_counter
@@ -77,6 +81,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.token_verifier = TokenVerifier(settings)
     application.include_router(meetings_router)
     application.include_router(ea_preparation_router)
+    application.include_router(security_preparation_router)
+    application.include_router(security_reviews_router)
     application.include_router(ea_meeting_reviews_router)
     application.include_router(ea_diagrams_router)
     application.include_router(ea_human_reviews_router)

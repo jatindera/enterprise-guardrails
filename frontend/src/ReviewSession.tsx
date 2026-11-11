@@ -6,6 +6,7 @@ import { preparationAccess, canEditPreparationFocus } from "./auth/preparationAc
 import type { PreparationScope } from "./auth/preparationAccess";
 import MeetingReview from "./MeetingReview";
 import EAMeetingReview from "./EAMeetingReview";
+import SecurityReviews from "./SecurityReviews";
 import type { AcceptedMeetingReview } from "./types";
 
 import type { ReviewerCorrection } from "./MeetingReview";
@@ -82,6 +83,7 @@ export default function ReviewSession({
 }: ReviewSessionProps) {
   const access = preparationAccess(useAuth().roles);
   const preparationScope = preparationDomain;
+  const assistantConnected = preparationDomain === "EA" || preparationDomain === "Security";
   const roleCanPrepare = canEditPreparationFocus(access, preparationDomain) && (canEditOverride ?? true);
   const [phase, setPhase] = useState<MeetingPhase>("Prepare");
 
@@ -369,7 +371,7 @@ export default function ReviewSession({
               <h2>Preparation AI assistant</h2>
 
               <Badge appearance="tint" color="warning">
-                {preparationScope === "EA" ? "Foundry agent" : "AI connection pending"}
+                {assistantConnected ? "AI connected" : "AI connection pending"}
               </Badge>
             </div>
 
@@ -391,8 +393,11 @@ export default function ReviewSession({
                 </p>
 
                 <p>
-                  <strong>EA complexity:</strong>{" "}
-                  {project.eaComplexity}
+                  {preparationScope === "Security" ? (
+                    <><strong>Security risk:</strong> {project.securityRisk}</>
+                  ) : (
+                    <><strong>EA complexity:</strong> {project.eaComplexity}</>
+                  )}
                 </p>
 
                 <ProjectIntakeDetails project={project} />
@@ -408,7 +413,7 @@ export default function ReviewSession({
                 onAddQuestion={addQuestionFromChat}
                 disabled={!canPrepare}
                 scope={preparationScope}
-                connected={preparationScope === "EA"}
+                connected={assistantConnected}
                 allowedFocuses={canPrepare ? [preparationScope] : []}
               />
             </div>
@@ -574,8 +579,8 @@ export default function ReviewSession({
             <div className="panel-heading">
               <h2>Meeting Assistant</h2>
 
-              <Badge appearance="tint" color={preparationDomain === "EA" ? "informative" : "warning"}>
-                {preparationDomain === "EA" ? "Foundry agent" : "AI connection pending"}
+              <Badge appearance="tint" color={assistantConnected ? "informative" : "warning"}>
+                {assistantConnected ? "AI connected" : "AI connection pending"}
               </Badge>
             </div>
 
@@ -591,7 +596,7 @@ export default function ReviewSession({
                 onMessagesChange={setMeetingChatMessages}
                 onDraftChange={setMeetingChatDraft}
                 onAddQuestion={addMeetingQuestionFromChat}
-                connected={preparationDomain === "EA"}
+                connected={assistantConnected}
                 chatMode="meeting"
                 beforeSend={persistence.flush}
                 allowedFocuses={[preparationDomain]}
@@ -610,7 +615,9 @@ export default function ReviewSession({
       {/* Keep mounted so attachments survive phase changes. */}
       <div hidden={phase !== "Review meeting"}>
         {preparationDomain === "EA" ? <EAMeetingReview demandId={project.demandId} canEdit={canPrepare}
-          beforeGenerate={persistence.flush} onAcceptedReviewChange={onAcceptedReviewChange}/> : <fieldset disabled={!canPrepare} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
+          beforeGenerate={persistence.flush} onAcceptedReviewChange={onAcceptedReviewChange}/> : preparationDomain === "Security" ?
+          phase === "Review meeting" && <SecurityReviews demandId={project.demandId} canEdit={canPrepare}
+            mode="ai" beforeGenerate={persistence.flush} /> : <fieldset disabled={!canPrepare} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
         <TranscriptUpload
           attachments={transcripts}
           onAttachmentChange={setTranscripts}
@@ -631,7 +638,10 @@ export default function ReviewSession({
       {/* Keep the host assessment mounted while switching phases. */}
       {assessmentTab && (
         <div hidden={phase !== "Assessment"}>
-          {assessmentTab.render(() => setPhase("Review meeting"))}
+          {preparationDomain === "Security" ? phase === "Assessment" &&
+            <SecurityReviews demandId={project.demandId} canEdit={canPrepare} mode="human"
+              openReview={() => setPhase("Review meeting")} /> :
+            assessmentTab.render(() => setPhase("Review meeting"))}
         </div>
       )}
       </fieldset>

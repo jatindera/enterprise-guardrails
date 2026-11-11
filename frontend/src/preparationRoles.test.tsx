@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { generateEAQuestions } from "./api/projects";
 import MeetingPreparation from "./MeetingPreparation";
 import type { PreparedQuestion } from "./MeetingPreparation";
 import PreparationChat from "./PreparationChat";
@@ -50,6 +51,26 @@ describe("preparation controls", () => {
     expect(first.textContent).toContain("Your question");
     expect(first.textContent).toContain(domain);
     expect((first.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+  });
+  it("regenerates only unselected, unlocked Security AI drafts", async () => {
+    identity.roles = ["security-engineer"];
+    const seed: PreparedQuestion = {id:"ai", focus:"Security", priority:"Essential",
+      question:"Discard me", reason:"Draft", source:"ai", selected:false};
+    const retained: PreparedQuestion[] = [
+      {...seed, id:"manual", question:"Manual question", source:"manual"},
+      {...seed, id:"selected", question:"Selected question", selected:true},
+      {...seed, id:"asked", question:"Asked question"},
+      {...seed, id:"ea", focus:"EA", question:"EA question"},
+    ];
+    const onChange = vi.fn();
+    render(<MeetingPreparation project={project} questions={[seed, ...retained]} onQuestionsChange={onChange}
+      scope="Security" lockedQuestionIds={["asked"]} />);
+    fireEvent.click(screen.getByRole("button", {name:"Regenerate AI questions"}));
+    await waitFor(() => expect(onChange).toHaveBeenCalledOnce());
+    expect(generateEAQuestions).toHaveBeenCalledWith("3845", expect.any(AbortSignal), "Security");
+    expect(onChange.mock.calls[0][0]).toEqual([...retained, expect.objectContaining({
+      focus:"Security", question:"Which systems are involved?", selected:false, source:"ai",
+    })]);
   });
   it("keeps Admin in the supplied assessment domain", () => {
     render(<Harness domain="Security" />);
