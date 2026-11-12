@@ -59,7 +59,7 @@ def view(row):
     if row is None:
         return None
     data = json.loads(row.payload)
-    if row.kind in {'Report', 'Transcript'}:
+    if row.kind in {'Report', 'Transcript', 'TranscriptDeleting'}:
         data = {'fileName': data['fileName'], 'sizeBytes': data['sizeBytes']}
     elif row.kind == 'AI':
         data['sources'] = [{key: value for key, value in source.items() if key in {'fileName', 'sha256', 'id'}}
@@ -90,12 +90,12 @@ def state(session, demand_id, user):
         human_ai = ai_source(human.source_revision)
     visible = session.scalars(select(SecurityReviewVersion).where(
         SecurityReviewVersion.project_id == project.id,
-        SecurityReviewVersion.kind.in_(['Report', 'Transcript', 'Submitted']),
+        SecurityReviewVersion.kind.in_(['Report', 'Transcript', 'TranscriptDeleting', 'Submitted']),
     ).order_by(SecurityReviewVersion.revision.desc())).all()
     return {'revision': revision(last), 'canClose': can_close,
             'ai': view(ai), 'acceptedAI': view(accepted_ai), 'human': view(human),
             'humanAI': view(human_ai),
-            'transcripts': [view(row) for row in visible if row.kind == 'Transcript'],
+            'transcripts': [view(row) for row in visible if row.kind in {'Transcript', 'TranscriptDeleting'}],
             'reports': [view(row) for row in visible if row.kind == 'Report'],
             'history': [view(row) for row in visible if row.kind == 'Submitted']}
 

@@ -5,6 +5,7 @@ import logging
 
 from azure.core.exceptions import AzureError
 from fastapi import HTTPException
+from sqlalchemy import select
 
 from app.db.models import SecurityReviewVersion
 from app.modules.artifacts.service import MAX_BYTES, filename
@@ -86,3 +87,38 @@ def read_blob(details, store):
     except AzureError as error:
         logger.warning('Security file download failed; exception_type=%s', type(error).__name__)
         raise HTTPException(503, 'Security file could not be downloaded.') from None
+
+def delete_transcript(session, demand_id, file_id, user, store):
+    with session.begin():
+        project, _ = access(session, demand_id, user, lock=True)
+        row = session.get(SecurityReviewVersion, file_id)
+        if row is None:
+            return
+        if row.project_id != project.id or row.kind not in {'Transcript', 'TranscriptDeleting', 'TranscriptDeleted'}:
+            raise HTTPException(404, 'Security transcript not found.')
+        if row.kind == 'TranscriptDeleted':
+            return
+        details = json.loads(row.payload)
+        if details['account'] != store.account:
+            raise HTTPException(503, 'The configured storage account differs from this transcript.')
+        if row.kind == 'Transcript':
+            reviews = session.scalars(select(SecurityReviewVersion.payload).where(
+                SecurityReviewVersion.project_id == project.id, SecurityReviewVersion.kind == 'AI'))
+            if any(source.get('id') == str(file_id) for payload in reviews
+                   for source in json.loads(payload)['sources']):
+                raise HTTPException(409, 'This transcript is cited by a saved Security review. Clear its selection to exclude it from future reviews.')
+            next_revision = revision(latest(session, project.id))
+            row.kind = 'TranscriptDeleting'
+            append(session, project, next_revision, 'TranscriptRemoval', {'fileId': str(file_id)}, user)
+
+    try:
+        store.delete(details['container'], details['blob'])
+    except AzureError:
+        logger.warning('Security transcript deletion failed; file_id=%s', file_id)
+        raise HTTPException(503, 'Transcript deletion failed. Retry deletion to finish removing it.') from None
+
+    with session.begin():
+        access(session, demand_id, user, lock=True)
+        row = session.get(SecurityReviewVersion, file_id)
+        row.kind = 'TranscriptDeleted'
+        row.payload = '{}'

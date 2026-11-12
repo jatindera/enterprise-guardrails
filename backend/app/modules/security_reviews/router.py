@@ -76,6 +76,12 @@ def download_transcript(demand_id: DemandId, file_id: UUID, session: SessionDep,
     return attachment(name, content)
 
 
+@router.delete('/transcripts/{file_id}', status_code=204)
+def delete_transcript(demand_id: DemandId, file_id: UUID, session: SessionDep, user: UserDep, store: Store):
+    reports.delete_transcript(session, demand_id, file_id, user, store)
+    return Response(status_code=204)
+
+
 @router.put('/reports/{report_id}')
 async def upload(demand_id: DemandId, report_id: UUID, request: Request, session: SessionDep, user: UserDep,
                  store: Store, file_name: Annotated[str, Query(alias='fileName', min_length=1, max_length=260)]):

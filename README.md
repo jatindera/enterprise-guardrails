@@ -74,3 +74,8 @@ or readiness gate. Existing assigned-EA/Admin acceptance rules and confirmation 
   your Azure SQL/storage configuration were not exercised here.
 
 See TESTING.md for application validation steps.
+
+npm run dev -- --port 5173 --strictPort
+
+uv run uvicorn app.main:app --reload --port 8000 --log-level info --log-config logging.json
+

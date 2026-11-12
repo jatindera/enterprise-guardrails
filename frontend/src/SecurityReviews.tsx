@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, Select, Textarea } from "@fluentui/react-components";
+import { Badge, Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Select, Textarea } from "@fluentui/react-components";
 import { request } from "./api/projects";
 import "./EAFinalAssessment.css";
+import "./EAMeetingReview.css";
 import TranscriptUpload, { type TranscriptAttachment } from "./TranscriptUpload";
 
 type Version<T> = {
@@ -92,7 +93,10 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Human>(emptyHuman);
   const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState("");
+  const busy = Boolean(operation);
+  const [preview, setPreview] = useState<{ name: string; text: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Report | null>(null);
   const [error, setError] = useState("");
   const active = useRef<AbortController | null>(null);
   const reportInput = useRef<HTMLInputElement>(null);
@@ -117,11 +121,11 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
     return () => { controller.abort(); active.current?.abort(); active.current = null; };
   }, [canEdit, load]);
 
-  async function run(action: (signal: AbortSignal) => Promise<void>) {
+  async function run(action: (signal: AbortSignal) => Promise<void>, message = "Working on the Security review…") {
     if (!canEdit || active.current) return;
     const controller = new AbortController();
     active.current = controller;
-    setBusy(true);
+    setOperation(message);
     setError("");
     try {
       await action(controller.signal);
@@ -130,7 +134,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
     } finally {
       if (active.current === controller) {
         active.current = null;
-        setBusy(false);
+        setOperation("");
       }
     }
   }
@@ -167,7 +171,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
         throw err;
       }
       await load(signal, false);
-    });
+    }, "Saving transcripts…");
   }
 
   function uploadReport(file: File) {
@@ -190,7 +194,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
     });
   }
 
-  function download(path: string, fileName: string) {
+  function download(path: string, fileName: string, message = "Downloading file…") {
     void run(async signal => {
       const data = await request<Blob>(base + path, { signal }, "blob");
       if (signal.aborted) return;
@@ -200,7 +204,28 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
       link.download = fileName;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    });
+    }, message);
+  }
+
+  function previewTranscript(file: Report) {
+    void run(async signal => {
+      const blob = await request<Blob>(`${base}/transcripts/${file.id}/download`, { signal }, "blob");
+      const text = await blob.text();
+      if (!signal.aborted) setPreview({ name: file.data.fileName, text });
+    }, "Loading transcript preview…");
+  }
+
+  function deleteTranscript(file: Report) {
+    setPendingDelete(null);
+    void run(async signal => {
+      try {
+        await request(`${base}/transcripts/${file.id}`, { method: "DELETE", signal });
+      } catch (err) {
+        if (!signal.aborted) await load(signal, false).catch(() => {});
+        throw err;
+      }
+      await load(signal, false);
+    }, "Deleting transcript…");
   }
 
   function reader(review: Version<AIReview>) {
@@ -213,7 +238,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
   const saved = state?.human?.data;
   const draftMatches = saved && (Object.keys(emptyHuman) as (keyof Human)[]).every(key => draft[key] === (key === "assessment" ? saved.assessment ?? "" : saved[key]));
   const currentSource = state?.human?.sourceRevision === state?.acceptedAI?.revision;
-  const selected = (state?.transcripts ?? []).filter(file => !excluded.includes(file.id));
+  const selected = (state?.transcripts ?? []).filter(file => file.kind === "Transcript" && !excluded.includes(file.id));
   const canSubmit = !busy && state?.canClose && draftMatches && currentSource &&
     draft.risk && draft.decision && draft.rationale.trim() &&
     (draft.decision !== "Conditional approval" || draft.conditions.trim());
@@ -236,28 +261,66 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
           <Button appearance="primary" disabled={busy || editing} onClick={() => void run(signal => load(signal))}>Reload saved Security review</Button>
           {mode === "human" && state?.acceptedAI && openReview && <Button appearance="primary" disabled={busy || editing} onClick={openReview}>Open review meeting</Button>}
         </div>
-        {busy && <p role="status">Working on the Security review…</p>}
+        {busy && <div role="status" className="ea-review-feedback ea-review-feedback--progress"><strong>{operation}</strong></div>}
         {mode === "ai" && state && <>
-          <p>Save meeting transcripts, then select the files to include in the advisory review.</p>
-          {(state.transcripts ?? []).map(file => <div className="ea-review-toolbar" key={file.id}>
-            <label><input type="checkbox" checked={!excluded.includes(file.id)} disabled={busy}
-              onChange={event => {
-                const checked = event.currentTarget.checked;
-                setExcluded(current => checked ? current.filter(id => id !== file.id) : [...current, file.id]);
-              }} /> {file.data.fileName}</label>
-            <Badge appearance="tint" color="success">Saved</Badge>
-            <Button appearance="primary" disabled={busy}
-              onClick={() => download(`/transcripts/${file.id}/download`, file.data.fileName)}>Download</Button>
-          </div>)}
-          <TranscriptUpload staged attachments={transcripts} onAttachmentChange={setTranscripts} disabled={busy} />
+          <section className="content-panel" aria-label="Meeting transcripts">
+            <div className="panel-heading"><h2>Meeting transcripts</h2></div>
+            <div className="workspace-panel-body">
+              {state.transcripts.length === 0 ? <p>No saved transcripts. Add one or more meeting transcripts to begin.</p> :
+                <ul className="ea-review-files">
+                  {state.transcripts.map(file => {
+                    const ready = file.kind === "Transcript";
+                    return <li key={file.id}>
+                      <label>
+                        <input type="checkbox" checked={ready && !excluded.includes(file.id)} disabled={busy || !ready}
+                          aria-label={`Include ${file.data.fileName} in review`}
+                          onChange={event => {
+                            const checked = event.currentTarget.checked;
+                            setExcluded(current => checked ? current.filter(id => id !== file.id) : [...current, file.id]);
+                          }} />
+                        {" "}<strong>{file.data.fileName}</strong> · {ready ? "Ready" : "Deletion pending"} · {(file.data.sizeBytes / 1024).toFixed(1)} KB
+                      </label>
+                      <div>
+                        {ready && <>
+                          <Button appearance="primary" disabled={busy} onClick={() => previewTranscript(file)}>Preview</Button>
+                          <Button appearance="primary" disabled={busy} onClick={() =>
+                            download(`/transcripts/${file.id}/download`, file.data.fileName, "Downloading transcript…")}>Download</Button>
+                        </>}
+                        <Button appearance="primary" disabled={busy} onClick={() => setPendingDelete(file)}>
+                          {ready ? "Delete file" : "Retry deletion"}
+                        </Button>
+                      </div>
+                    </li>;
+                  })}
+                </ul>}
+              <TranscriptUpload staged attachments={transcripts} onAttachmentChange={setTranscripts} disabled={busy} />
+              <Button appearance="primary" disabled={busy || transcripts.length === 0} onClick={saveTranscripts}>Save transcripts</Button>
+            </div>
+          </section>
           <div className="ea-review-toolbar">
-            <Button appearance="primary" disabled={busy || transcripts.length === 0} onClick={saveTranscripts}>Save transcripts</Button>
             <Button appearance="primary" disabled={busy || transcripts.length > 0 || selected.length === 0 || selected.length > 10}
               onClick={() => mutate("/generate", { transcriptIds: selected.map(file => file.id) })}>
               Generate Security AI review
             </Button>
           </div>
           {selected.length > 10 && <p>Select up to 10 saved transcripts for this review.</p>}
+          <Dialog open={preview !== null} onOpenChange={(_, data) => { if (!data.open) setPreview(null); }}>
+            <DialogSurface><DialogBody>
+              <DialogTitle>{preview?.name ?? "Transcript preview"}</DialogTitle>
+              <DialogContent><pre className="intake-source-text ea-transcript-preview">{preview?.text}</pre></DialogContent>
+              <DialogActions><Button appearance="primary" onClick={() => setPreview(null)}>Close preview</Button></DialogActions>
+            </DialogBody></DialogSurface>
+          </Dialog>
+          <Dialog open={pendingDelete !== null} onOpenChange={(_, data) => { if (!data.open) setPendingDelete(null); }}>
+            <DialogSurface><DialogBody>
+              <DialogTitle>Delete saved transcript?</DialogTitle>
+              <DialogContent>{pendingDelete?.data.fileName} will be removed from this Security review workspace and storage.</DialogContent>
+              <DialogActions>
+                <Button onClick={() => setPendingDelete(null)}>Cancel</Button>
+                <Button appearance="primary" onClick={() => { if (pendingDelete) deleteTranscript(pendingDelete); }}>Delete transcript</Button>
+              </DialogActions>
+            </DialogBody></DialogSurface>
+          </Dialog>
           {state.ai && <>
             <h3>AI draft v{state.ai.revision}</h3>
             {reader(state.ai)}

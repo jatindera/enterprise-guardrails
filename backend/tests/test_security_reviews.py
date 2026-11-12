@@ -33,6 +33,9 @@ class MemoryStore:
     def put(self, container, name, content, digest):
         self.data[container, name] = content, digest
 
+    def delete(self, container, name):
+        self.data.pop((container, name), None)
+
     def get(self, container, name, size, digest):
         content, stored = self.data[container, name]
         assert stored == digest and len(content) == size
@@ -186,3 +189,30 @@ def test_transcript_generation_rejects_source_from_another_project(client, saved
     })
     assert result.status_code == 404
     invoke.assert_not_called()
+
+def test_delete_unused_transcript_is_retryable_and_removes_blob(client, saved_transcript, monkeypatch):
+    from azure.core.exceptions import AzureError
+
+    file_id, store = saved_transcript
+    url = f'{BASE}/transcripts/{file_id}'
+    delete = store.delete
+    monkeypatch.setattr(store, 'delete', Mock(side_effect=AzureError('unavailable')))
+    assert client.delete(url).status_code == 503
+    assert client.get(BASE).json()['transcripts'][0]['kind'] == 'TranscriptDeleting'
+    assert client.get(url + '/download').status_code == 404
+    blocked, invoke = generate(client, saved_transcript, expected=2)
+    assert blocked.status_code == 404
+    invoke.assert_not_called()
+    monkeypatch.setattr(store, 'delete', delete)
+    assert client.delete(url).status_code == 204
+    assert client.delete(url).status_code == 204
+    assert not store.data
+    assert client.get(BASE).json()['transcripts'] == []
+
+
+def test_delete_cited_transcript_preserves_review_evidence(client, saved_transcript):
+    file_id, store = saved_transcript
+    assert generate(client, saved_transcript)[0].status_code == 200
+    assert client.delete(f'{BASE}/transcripts/{file_id}').status_code == 409
+    assert client.get(BASE + '/ai/2/transcripts/1/download').content == SOURCE['text'].encode()
+    assert len(store.data) == 1

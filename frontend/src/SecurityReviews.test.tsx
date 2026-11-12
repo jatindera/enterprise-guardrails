@@ -22,10 +22,10 @@ afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 it("generates a Security draft from staged transcripts and accepts it explicitly", async () => {
   let state = { ...empty, ai: null as typeof review | null, acceptedAI: null as typeof review | null,
-    transcripts: [] as { id: string; data: {fileName: string} }[] };
+    transcripts: [] as { id: string; kind: string; data: {fileName: string; sizeBytes: number} }[] };
   vi.mocked(request).mockImplementation(async (path) => {
     if (path.startsWith(base + "/transcripts/")) state = { ...state, revision: 1,
-      transcripts: [{ id: "transcript-1", data: { fileName: "meeting.txt" } }] };
+      transcripts: [{ id: "transcript-1", kind: "Transcript", data: { fileName: "meeting.txt", sizeBytes: 1024 } }] };
     if (path === base + "/generate") state = { ...state, revision: 2, ai: review };
     if (path === base + "/accept") state = { ...state, revision: 2, acceptedAI: review };
     return state;
@@ -77,4 +77,24 @@ it("does not fetch Security records for a user without reviewer access", () => {
   render(<SecurityReviews demandId="3601" canEdit={false} mode="human" />);
   expect(screen.getByText(/access is limited/)).toBeTruthy();
   expect(request).not.toHaveBeenCalled();
+});
+
+it("previews saved text and confirms deletion", async () => {
+  let state = { ...empty, revision: 1, transcripts: [{
+    id: "transcript-1", kind: "Transcript", data: { fileName: "meeting.txt", sizeBytes: 1024 },
+  }] };
+  vi.mocked(request).mockImplementation(async (path, options) => {
+    if (path.endsWith("/download")) return { text: async () => "Saved transcript text." };
+    if (options?.method === "DELETE") state = { ...state, revision: 2, transcripts: [] };
+    return state;
+  });
+  render(<SecurityReviews demandId="3601" canEdit mode="ai" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
+  expect(await screen.findByText("Saved transcript text.")).toBeTruthy();
+  fireEvent.click(screen.getByText("Close preview"));
+  fireEvent.click(await screen.findByRole("button", { name: "Delete file" }));
+  await screen.findByText("Delete saved transcript?");
+  fireEvent.click(screen.getByText("Delete transcript"));
+  await screen.findByText(/No saved transcripts/);
+  expect(request).toHaveBeenCalledWith(base + "/transcripts/transcript-1", expect.objectContaining({ method: "DELETE" }));
 });
