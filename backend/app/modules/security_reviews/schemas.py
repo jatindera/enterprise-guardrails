@@ -10,6 +10,10 @@ class Revision(APIModel):
     expected_revision: int = Field(ge=0)
 
 
+class AcceptReview(Revision):
+    review_revision: int | None = Field(default=None, ge=1)
+
+
 class Generate(Revision):
     transcript_ids: list[UUID] = Field(min_length=1, max_length=10)
 

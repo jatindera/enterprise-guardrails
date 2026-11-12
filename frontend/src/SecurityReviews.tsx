@@ -21,6 +21,7 @@ type AIReview = {
   findings: { kind: string; text: string; transcript: number; line: number; excerpt: string }[];
   sources: { fileName: string }[];
 };
+type AIReviewVersion = Version<AIReview> & { version: number; status: "Draft" | "Accepted" };
 type Human = {
   risk: string;
   decision: string;
@@ -34,8 +35,9 @@ type ReviewState = {
   revision: number;
   canClose: boolean;
   ai: Version<AIReview> | null;
-  acceptedAI: Version<AIReview> | null;
-  humanAI?: Version<AIReview> | null;
+  aiVersions?: AIReviewVersion[];
+  acceptedAI: (Version<AIReview> & { version?: number }) | null;
+  humanAI?: (Version<AIReview> & { version?: number }) | null;
   human: Version<Human> | null;
   reports: Report[];
   transcripts: Report[];
@@ -52,17 +54,19 @@ function AIReader({ review, downloadSource, busy }: { review: Version<AIReview>;
     ["Open risk", "4. Open risks and verification gaps"],
     ["Follow-up", "5. Follow-up questions and actions"],
   ];
-  return <article className="ea-record">
+  return <article className="ea-review-reader" aria-label="Read-only Security AI review">
+    <p className="ea-review-legend">Red highlights open risks and verification gaps. Reported controls reflect stakeholder statements.</p>
     <h3>Consolidated Security meeting review</h3>
     <p>Review template {review.data.templateVersion ?? "1.0 (saved legacy review)"}</p>
     <h4>1. Project understanding</h4>
     <p className="security-preserve-text">{review.data.summary}</p>
     {sections.map(([kind, title]) => {
       const findings = review.data.findings.filter(finding => finding.kind === kind);
-      return <section key={kind} className="ea-record">
-        <h4>{title}</h4>
+      return <section key={kind}>
+        <h3>{title}</h3>
         {findings.length === 0 && <p>None recorded.</p>}
-        {findings.map((finding, index) => <div key={index}>
+        {findings.map((finding, index) => <div key={index} className={kind === "Open risk" ? "ea-review-finding ea-review-finding--attention" : "ea-review-finding"}>
+          <strong>{finding.kind}</strong>
           <p className="security-preserve-text">{finding.text}</p>
           <blockquote>{finding.excerpt}</blockquote>
           <small>{review.data.sources[finding.transcript - 1]?.fileName}, line {finding.line}</small>
@@ -87,6 +91,8 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
   openReview?: () => void;
 }) {
   const base = `/api/projects/${encodeURIComponent(demandId)}/security-reviews`;
+  const [reviewRevision, setReviewRevision] = useState<number | null>(null);
+  const [confirmAccept, setConfirmAccept] = useState(false);
   const [state, setState] = useState<ReviewState | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptAttachment[]>([]);
   const [excluded, setExcluded] = useState<string[]>([]);
@@ -148,6 +154,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
       }) }, "json", 240000);
       await load(signal);
       if (signal.aborted) return;
+      if (path === "/generate") setReviewRevision(null);
       if (path === "/human" || path === "/human/submit") setEditing(false);
       if (path === "/human/reopen") {
         setReason("");
@@ -233,6 +240,10 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
       download(`/ai/${review.revision}/transcripts/${number}/download`, name)} />;
   }
 
+  const reviewVersions = state?.aiVersions ?? (state?.ai ? [{
+    ...state.ai, version: 1, status: state.acceptedAI?.revision === state.ai.revision ? "Accepted" as const : "Draft" as const,
+  }] : []);
+  const visibleReview = reviewVersions.find(item => item.revision === reviewRevision) ?? reviewVersions[reviewVersions.length - 1];
   const submitted = state?.human?.kind === "Submitted";
   const source = submitted ? state?.humanAI ?? state?.acceptedAI : state?.acceptedAI;
   const saved = state?.human?.data;
@@ -297,13 +308,6 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
               <Button appearance="primary" disabled={busy || transcripts.length === 0} onClick={saveTranscripts}>Save transcripts</Button>
             </div>
           </section>
-          <div className="ea-review-toolbar">
-            <Button appearance="primary" disabled={busy || transcripts.length > 0 || selected.length === 0 || selected.length > 10}
-              onClick={() => mutate("/generate", { transcriptIds: selected.map(file => file.id) })}>
-              Generate Security AI review
-            </Button>
-          </div>
-          {selected.length > 10 && <p>Select up to 10 saved transcripts for this review.</p>}
           <Dialog open={preview !== null} onOpenChange={(_, data) => { if (!data.open) setPreview(null); }}>
             <DialogSurface><DialogBody>
               <DialogTitle>{preview?.name ?? "Transcript preview"}</DialogTitle>
@@ -321,20 +325,58 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
               </DialogActions>
             </DialogBody></DialogSurface>
           </Dialog>
-          {state.ai && <>
-            <h3>AI draft v{state.ai.revision}</h3>
-            {reader(state.ai)}
-            <Button appearance="primary" disabled={busy || state.acceptedAI?.revision === state.ai.revision}
-              onClick={() => mutate("/accept", {})}>
-              {state.acceptedAI?.revision === state.ai.revision ? "AI review accepted" : "Accept AI review for human assessment"}
-            </Button>
-          </>}
+          <section className="content-panel" aria-label="AI meeting review">
+            <div className="panel-heading">
+              <h2>AI meeting review</h2>
+              <Badge appearance="filled" color={visibleReview?.status === "Accepted" ? "success" : "brand"}>
+                {visibleReview?.status ?? "Not generated"}
+              </Badge>
+            </div>
+            <div className="workspace-panel-body">
+              <p>The standard Security template uses project intake and the selected saved transcripts. Review readiness is advisory.</p>
+              <div className="ea-review-toolbar">
+                <Button appearance="primary" disabled={busy || transcripts.length > 0 || selected.length === 0 || selected.length > 10}
+                  onClick={() => mutate("/generate", { transcriptIds: selected.map(file => file.id) })}>
+                  {state.ai ? "Regenerate review" : "Generate Security AI review"}
+                </Button>
+                {visibleReview && <label>Review version
+                  <select value={visibleReview.revision} disabled={busy}
+                    onChange={event => setReviewRevision(Number(event.currentTarget.value))}>
+                    {reviewVersions.map(item => <option key={item.id} value={item.revision}>
+                      Version {item.version} · {item.status}
+                    </option>)}
+                  </select>
+                </label>}
+              </div>
+              {selected.length > 10 && <p>Select up to 10 saved transcripts for this review.</p>}
+              {visibleReview && <>
+                {reader(visibleReview)}
+                <p className="workspace-secondary">AI-generated review · Read-only. Record your final Security decision in Security assessment.</p>
+                {visibleReview.status === "Draft" && <Button appearance="primary"
+                  disabled={busy || transcripts.length > 0 || visibleReview.revision !== state.ai?.revision}
+                  onClick={() => setConfirmAccept(true)}>Accept meeting review</Button>}
+              </>}
+            </div>
+          </section>
+          <Dialog open={confirmAccept} onOpenChange={(_, data) => { if (!data.open) setConfirmAccept(false); }}>
+            <DialogSurface><DialogBody>
+              <DialogTitle>Accept Security meeting review?</DialogTitle>
+              <DialogContent>Version {visibleReview?.version} will become the source for human Security assessment.</DialogContent>
+              <DialogActions>
+                <Button onClick={() => setConfirmAccept(false)}>Cancel</Button>
+                <Button appearance="primary" onClick={() => {
+                  setConfirmAccept(false);
+                  if (visibleReview) mutate("/accept", { reviewRevision: visibleReview.revision });
+                }}>Accept review</Button>
+              </DialogActions>
+            </DialogBody></DialogSurface>
+          </Dialog>
         </>}
         {mode === "human" && state && <>
           <p>Record the human Security decision and attach the team’s closing report when available. The existing Security system remains the official record.</p>
           {!state.acceptedAI && <p>Accept a Security AI review before saving the human assessment.{" "}
             <Button appearance="primary" onClick={openReview}>Open review meeting</Button></p>}
-          {source && <details className="ea-final-source"><summary>AI review source · Version {source.revision} <span className="ea-final-source-hint">Read-only reference</span></summary>
+          {source && <details className="ea-final-source"><summary>AI review source · Version {source.version ?? source.revision} <span className="ea-final-source-hint">Read-only reference</span></summary>
             {reader(source)}</details>}
           {state.human && !submitted && !currentSource && <p role="status">The accepted AI source changed. Review it before saving a new draft.</p>}
           {submitted ? <p role="status">Security decision submitted.</p> :

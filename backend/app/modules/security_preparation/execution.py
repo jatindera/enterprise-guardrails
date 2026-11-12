@@ -1,6 +1,8 @@
 """Route Security requests to their own agent in all execution modes."""
 import asyncio
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Literal
 
 import httpx
@@ -14,6 +16,18 @@ from app.agents.ollama import OllamaSettings
 from app.agents.security.agent import create_agent, create_agent_with_client
 from app.modules.ea_preparation.hosted import invoke_hosted_agent
 from app.modules.ea_preparation.errors import EAInferenceError
+
+
+_security_review_schema = ContextVar('security_review_schema', default=None)
+
+
+@contextmanager
+def structured_security_review(schema):
+    token = _security_review_schema.set(schema)
+    try:
+        yield
+    finally:
+        _security_review_schema.reset(token)
 
 
 class SecurityExecutionSettings(BaseSettings):
@@ -48,8 +62,13 @@ async def run_ollama(payload, settings):
         async with AsyncOpenAI(base_url=settings.base_url, api_key='ollama', http_client=transport,
                                max_retries=0, timeout=settings.request_timeout_seconds) as api:
             client = OpenAIChatCompletionClient(model=settings.model, async_client=api)
+            schema = _security_review_schema.get()
+            response_format = {'type': 'json_object'} if schema is None else {
+                'type': 'json_schema',
+                'json_schema': {'name': 'Security_Meeting_Review', 'schema': schema, 'strict': True},
+            }
             agent = create_agent_with_client(client, {'max_tokens': settings.max_output_tokens,
-                                                       'response_format': {'type': 'json_object'}})
+                                                       'response_format': response_format})
             return await run(agent, payload, settings.request_timeout_seconds)
 
 

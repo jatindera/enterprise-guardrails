@@ -10,7 +10,7 @@ from app.modules.artifacts.storage import artifact_store
 from app.modules.security_preparation.router import DemandId, SessionDep, UserDep, security_invoker
 from . import reports, service
 from app.modules.ea_meeting_reviews.service import decode, valid_filename, MAX_FILE
-from .schemas import Generate, HumanDraft, Reopen, Revision
+from .schemas import AcceptReview, Generate, HumanDraft, Reopen
 
 router = APIRouter(prefix='/api/projects/{demand_id}/security-reviews', tags=['Security reviews'])
 Store = Annotated[object, Depends(artifact_store)]
@@ -35,8 +35,8 @@ def transcript(demand_id: DemandId, review_revision: int, number: int, session: 
 
 
 @router.post('/accept')
-def accept(demand_id: DemandId, data: Revision, session: SessionDep, user: UserDep):
-    return service.accept(session, demand_id, data.expected_revision, user)
+def accept(demand_id: DemandId, data: AcceptReview, session: SessionDep, user: UserDep):
+    return service.accept(session, demand_id, data.expected_revision, user, data.review_revision)
 
 
 @router.put('/human')

@@ -45,8 +45,13 @@ it("generates a Security draft from staged transcripts and accepts it explicitly
   expect(request).toHaveBeenCalledWith(base + "/generate", expect.objectContaining({
     body: JSON.stringify({ expectedRevision: 1, transcriptIds: ["transcript-1"] }),
   }), "json", 240000);
-  fireEvent.click(screen.getByRole("button", { name: "Accept AI review for human assessment" }));
-  await screen.findByRole("button", { name: "AI review accepted" });
+  fireEvent.click(screen.getByRole("button", { name: "Accept meeting review" }));
+  await screen.findByText("Accept Security meeting review?");
+  fireEvent.click(screen.getByText("Accept review"));
+  await screen.findByText("Accepted");
+  expect(request).toHaveBeenCalledWith(base + "/accept", expect.objectContaining({
+    body: JSON.stringify({ expectedRevision: 2, reviewRevision: 1 }),
+  }), "json", 240000);
 });
 
 it("requires a saved human draft and keeps submission separate", async () => {
@@ -97,4 +102,24 @@ it("previews saved text and confirms deletion", async () => {
   fireEvent.click(screen.getByText("Delete transcript"));
   await screen.findByText(/No saved transcripts/);
   expect(request).toHaveBeenCalledWith(base + "/transcripts/transcript-1", expect.objectContaining({ method: "DELETE" }));
+});
+
+it("opens the regenerated draft and lets reviewers read earlier versions", async () => {
+  const first = { ...review, revision: 2, version: 1, status: "Accepted" };
+  const second = { ...review, id: "second", revision: 4, version: 2, status: "Draft",
+    data: { ...review.data, summary: "Regenerated security review." } };
+  let state = { ...empty, revision: 3, ai: first, acceptedAI: first, aiVersions: [first],
+    transcripts: [{ id: "transcript-1", kind: "Transcript", data: { fileName: "meeting.txt", sizeBytes: 1024 } }] };
+  vi.mocked(request).mockImplementation(async path => {
+    if (path.endsWith("/generate")) state = { ...state, revision: 4, ai: second, aiVersions: [first, second] };
+    return state;
+  });
+  render(<SecurityReviews demandId="3601" canEdit mode="ai" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Regenerate review" }));
+  await screen.findByText("Regenerated security review.");
+  const selector = screen.getByLabelText<HTMLSelectElement>("Review version");
+  expect(selector.value).toBe("4");
+  fireEvent.change(selector, { target: { value: "2" } });
+  expect(screen.getByText("Access was discussed.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Accept meeting review" })).toBeNull();
 });

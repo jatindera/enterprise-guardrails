@@ -216,3 +216,40 @@ def test_delete_cited_transcript_preserves_review_evidence(client, saved_transcr
     assert client.delete(f'{BASE}/transcripts/{file_id}').status_code == 409
     assert client.get(BASE + '/ai/2/transcripts/1/download').content == SOURCE['text'].encode()
     assert len(store.data) == 1
+
+
+def test_regeneration_preserves_review_versions_and_requires_latest_draft(client, saved_transcript):
+    assert generate(client, saved_transcript)[0].status_code == 200
+    assert client.post(BASE + '/accept', json={'expectedRevision': 2, 'reviewRevision': 2}).status_code == 200
+    assert generate(client, saved_transcript, expected=3, review={**AI, 'summary': 'Regenerated.'})[0].status_code == 200
+    state = client.get(BASE).json()
+    assert [(row['version'], row['revision'], row['status']) for row in state['aiVersions']] == [
+        (1, 2, 'Accepted'), (2, 4, 'Draft'),
+    ]
+    assert state['acceptedAI']['revision'] == 2
+    assert state['aiVersions'][0]['data']['summary'] == AI['summary']
+    assert client.post(BASE + '/accept', json={'expectedRevision': 4, 'reviewRevision': 2}).status_code == 409
+    assert client.post(BASE + '/accept', json={'expectedRevision': 4, 'reviewRevision': 4}).status_code == 200
+    state = client.get(BASE).json()
+    assert [row['status'] for row in state['aiVersions']] == ['Accepted', 'Accepted']
+    assert state['acceptedAI']['revision'] == 4
+
+
+def test_invalid_model_output_retries_with_schema_and_safe_diagnostics(client, saved_transcript, caplog):
+    invoke = Mock(side_effect=[json.dumps({**AI, 'private_model_text': 'sensitive content'}), json.dumps(AI)])
+    client.app.dependency_overrides[security_invoker] = lambda: invoke
+    result = client.post(BASE + '/generate', json={'expectedRevision': 1, 'transcriptIds': [saved_transcript[0]]})
+    assert result.status_code == 200, result.text
+    first, second = [json.loads(call.args[0]) for call in invoke.call_args_list]
+    assert 'readinessReason' in first['output_schema']['required']
+    assert second['output_correction']['issues'] == [{'field': '<unknown>', 'code': 'extra_forbidden'}]
+    assert 'private_model_text' not in caplog.text and 'sensitive content' not in caplog.text
+    assert len(client.get(BASE).json()['aiVersions']) == 1
+
+
+def test_persistent_invalid_model_output_does_not_save_draft(client, saved_transcript):
+    response, invoke = generate(client, saved_transcript, review={'summary': 'Incomplete response'})
+    assert response.status_code == 502
+    assert 'invalid review format' in response.text
+    assert invoke.call_count == 2
+    assert client.get(BASE).json()['aiVersions'] == []
