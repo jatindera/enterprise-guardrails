@@ -3,10 +3,12 @@ import { generateEAQuestions } from "./api/projects";
 import { useAuth } from "./auth/AuthGate";
 import { preparationAccess, canEditPreparationFocus } from "./auth/preparationAccess";
 import type { PreparationScope } from "./auth/preparationAccess";
+import "./EAMeetingReview.css";
 
 import {
   Badge,
   Button,
+  Spinner,
   Textarea,
 } from "@fluentui/react-components";
 
@@ -297,6 +299,13 @@ export default function MeetingPreparation({
           {filter}
         </Badge>
       </div>
+
+      {connected && busy && (
+        <div className="ea-review-feedback ea-review-feedback--progress" role="status">
+          <Spinner size="tiny" aria-hidden="true" />
+          <strong>{hasAIQuestions ? "Regenerating AI questions…" : "Preparing AI questions…"}</strong>
+        </div>
+      )}
 
       {connected && hasAIQuestions && (
         <p className="workspace-secondary">Regenerating replaces unselected AI questions. Your questions and selected questions are kept.</p>

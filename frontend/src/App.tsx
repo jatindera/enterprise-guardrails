@@ -14,6 +14,7 @@ import {
   Button,
   MessageBar,
   MessageBarBody,
+  Spinner,
 } from "@fluentui/react-components";
 
 import {
@@ -38,6 +39,7 @@ import BackendStatus from "./BackendStatus";
 
 import { useAuth } from "./auth/AuthGate";
 import ProfileMenu from "./auth/ProfileMenu";
+import "./EAMeetingReview.css";
 
 type NavigationItem =
   | "Portfolio"
@@ -317,7 +319,12 @@ function App() {
                 </MessageBarBody>
               </MessageBar>
             )}
-            {opening && <p role="status">Opening project…</p>}
+            {activePage === "Portfolio" && (opening || (loading && !selectedProject)) && (
+              <div className="ea-review-feedback ea-review-feedback--progress" role="status">
+                <Spinner size="tiny" aria-hidden="true" />
+                <strong>{opening ? "Opening project…" : "Loading portfolio…"}</strong>
+              </div>
+            )}
 
             <>
               <div hidden={activePage !== "Portfolio"}>

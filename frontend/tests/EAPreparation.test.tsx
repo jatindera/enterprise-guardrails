@@ -5,7 +5,7 @@ import MeetingPreparation from "../src/MeetingPreparation";
 import PreparationChat from "../src/PreparationChat";
 import type { Project } from "../src/types";
 const mocks = vi.hoisted(() => ({ generate: vi.fn(), chat: vi.fn() }));
-vi.mock("../src/auth/AuthGate", () => ({ useAuth: () => ({ roles: ["enterprise-architect"] }) }));
+vi.mock("../src/auth/AuthGate", () => ({ useAuth: () => ({ roles: ["enterprise-architect", "security-engineer"] }) }));
 vi.mock("../src/api/projects", () => ({ generateEAQuestions: mocks.generate, chatWithEA: mocks.chat }));
 const project = { demandId: "3845", name: "Example", businessFunction: "IT" } as Project;
 const question = { question: "Which integrations are needed?", reason: "Confirm scope.", priority: "Essential" };
@@ -146,4 +146,38 @@ it("does not send meeting chat when pending question saves fail", async () => {
   expect((await screen.findByRole("alert")).textContent).toContain("Could not save meeting questions");
   expect(mocks.chat).not.toHaveBeenCalled();
   expect(change).not.toHaveBeenCalled();
+});
+
+it.each([
+  { regenerate: false, button: "Prepare questions with AI", status: "Preparing AI questions…" },
+  { regenerate: true, button: "Regenerate AI questions", status: "Regenerating AI questions…" },
+])("shows the Security progress indicator while $button is pending", async ({ regenerate, button, status }) => {
+  let resolve!: (value: unknown) => void;
+  let reject!: (reason: Error) => void;
+  mocks.generate.mockReturnValue(new Promise((success, failure) => {
+    resolve = success;
+    reject = failure;
+  }));
+  const questions = regenerate ? [{
+    id: "old", focus: "Security" as const, priority: "Essential" as const,
+    question: "How is access controlled?", reason: "Confirm roles.", source: "ai" as const,
+  }] : [];
+  const change = vi.fn();
+  render(<MeetingPreparation project={project} questions={questions} onQuestionsChange={change} scope="Security" />);
+  fireEvent.click(screen.getByRole("button", { name: button }));
+
+  expect(screen.getByText(status).closest('[role="status"]')?.querySelector('[aria-hidden="true"]')).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Preparing questions…" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(mocks.generate).toHaveBeenCalledWith("3845", expect.any(AbortSignal), "Security");
+
+  if (regenerate) {
+    reject(new Error("Generation failed"));
+    expect((await screen.findByRole("alert")).textContent).toContain("Generation failed");
+    expect(change).not.toHaveBeenCalled();
+  } else {
+    resolve({ questions: [question] });
+    await waitFor(() => expect(change).toHaveBeenCalledTimes(1));
+  }
+  expect(screen.queryByText(status)).toBeNull();
+  expect((screen.getByRole("button", { name: button }) as HTMLButtonElement).disabled).toBe(false);
 });
