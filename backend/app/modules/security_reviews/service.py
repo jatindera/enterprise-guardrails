@@ -234,6 +234,10 @@ def save_human(session, demand_id, data, user, *, submit=False):
         current = latest(session, project.id, 'Draft', 'Submitted')
         if accepted is None:
             raise HTTPException(409, 'Accept the Security AI review before recording a human review.')
+        if current is None and not submit:
+            latest_ai = latest(session, project.id, 'AI')
+            if latest_ai is None or latest_ai.revision != accepted.source_revision:
+                raise HTTPException(409, 'Accept the latest Security AI draft before creating the human review.')
         if current and current.kind == 'Submitted':
             raise HTTPException(409, 'Reopen the submitted Security review before editing.')
         if submit and (current is None or current.source_revision != accepted.source_revision):

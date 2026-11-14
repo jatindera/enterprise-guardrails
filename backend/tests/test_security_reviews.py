@@ -228,11 +228,18 @@ def test_regeneration_preserves_review_versions_and_requires_latest_draft(client
     ]
     assert state['acceptedAI']['revision'] == 2
     assert state['aiVersions'][0]['data']['summary'] == AI['summary']
+    blocked = client.put(BASE + '/human', json={'expectedRevision': 4, **HUMAN})
+    assert blocked.status_code == 409
+    assert 'Accept the latest Security AI draft' in blocked.text
+    assert client.get(BASE).json()['human'] is None
     assert client.post(BASE + '/accept', json={'expectedRevision': 4, 'reviewRevision': 2}).status_code == 409
     assert client.post(BASE + '/accept', json={'expectedRevision': 4, 'reviewRevision': 4}).status_code == 200
     state = client.get(BASE).json()
     assert [row['status'] for row in state['aiVersions']] == ['Accepted', 'Accepted']
     assert state['acceptedAI']['revision'] == 4
+    saved = client.put(BASE + '/human', json={'expectedRevision': state['revision'], **HUMAN})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()['sourceRevision'] == 4
 
 
 def test_invalid_model_output_retries_with_schema_and_safe_diagnostics(client, saved_transcript, caplog):

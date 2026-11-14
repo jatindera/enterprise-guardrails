@@ -55,7 +55,11 @@ it("generates a Security draft from staged transcripts and accepts it explicitly
 });
 
 it("requires a saved human draft and keeps submission separate", async () => {
-  let state = { ...empty, revision: 2, ai: review, acceptedAI: review } as Record<string, unknown>;
+  const accepted = { ...review, data: { ...review.data, readiness: "Ready for human assessment",
+    readinessReason: "Stakeholders explained the controls.", findings: [
+      { kind: "Reported control", text: "Vendor access expires daily.", transcript: 1, line: 5, excerpt: "Access expires." },
+    ] } };
+  let state = { ...empty, revision: 2, ai: accepted, acceptedAI: accepted } as Record<string, unknown>;
   vi.mocked(request).mockImplementation(async (path, options) => {
     if (path === base + "/human" || path === base + "/human/submit") {
       const { expectedRevision, ...data } = JSON.parse(String(options?.body));
@@ -66,8 +70,20 @@ it("requires a saved human draft and keeps submission separate", async () => {
     return state;
   });
   render(<SecurityReviews demandId="3601" canEdit mode="human" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Edit human review" }));
-  fireEvent.change(screen.getByLabelText("Final Security assessment text"), {target:{value:"Human edited review."}});
+  fireEvent.click(await screen.findByRole("button", { name: "Create human final review from AI review" }));
+  const editor = await screen.findByLabelText<HTMLTextAreaElement>("Final Security assessment text");
+  expect(editor.disabled).toBe(false);
+  expect(editor.value).toContain(review.data.summary);
+  expect(editor.value).toContain("3. Reported controls");
+  expect(editor.value).toContain("Vendor access expires daily.\nmeeting.txt, line 5\nAccess expires.");
+  expect(editor.value).toContain("Stakeholders explained the controls.");
+  expect(editor.value).toContain("7. Evidence references");
+  expect(request).toHaveBeenCalledWith(base + "/human", expect.objectContaining({
+    method: "PUT",
+    body: JSON.stringify({ expectedRevision: 2, risk: "", decision: "", assessment: editor.value,
+      rationale: "", conditions: "", reportId: null }),
+  }), "json", 240000);
+  fireEvent.change(editor, {target:{value:"Human edited review."}});
   fireEvent.change(await screen.findByLabelText("Security risk classification"), { target: { value: "Low" } });
   fireEvent.change(screen.getByLabelText("Security decision"), { target: { value: "Approved" } });
   fireEvent.change(screen.getByLabelText("Decision rationale"), { target: { value: "Controls reviewed." } });
@@ -76,6 +92,38 @@ it("requires a saved human draft and keeps submission separate", async () => {
   await screen.findByText("Human edited review.");
   fireEvent.click(screen.getByRole("button", { name: "Submit Security decision" }));
   await screen.findByRole("button", { name: "Reopen Security review" });
+});
+
+it("keeps creation disabled until Security AI acceptance is recorded", async () => {
+  vi.mocked(request).mockResolvedValue({ ...empty, revision: 1, ai: review });
+  render(<SecurityReviews demandId="3601" canEdit mode="human" />);
+  const create = await screen.findByRole<HTMLButtonElement>("button", { name: "Create human final review from AI review" });
+  expect(create.disabled).toBe(true);
+  expect(screen.getByText(/Accept a Security AI review in Review meeting/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Edit human review" })).toBeNull();
+  fireEvent.click(create);
+  expect(request).toHaveBeenCalledTimes(1);
+
+  vi.mocked(request).mockResolvedValue({ ...empty, revision: 2, ai: review, acceptedAI: review });
+  fireEvent.click(screen.getByRole("button", { name: "Reload saved Security review" }));
+  await waitFor(() => expect(create.disabled).toBe(false));
+  expect(screen.getByText("Read AI source review (read-only)")).toBeTruthy();
+});
+
+it("disables initial human review creation after regeneration until the latest AI draft is accepted", async () => {
+  const regenerated = { ...review, revision: 3, data: { ...review.data, summary: "Regenerated Security review." } };
+  vi.mocked(request).mockResolvedValue({ ...empty, revision: 3, ai: regenerated, acceptedAI: review });
+  render(<SecurityReviews demandId="3601" canEdit mode="human" />);
+
+  const create = await screen.findByRole<HTMLButtonElement>("button", { name: "Create human final review from AI review" });
+  expect(create.disabled).toBe(true);
+  expect(screen.getByText(/Accept the latest Security AI draft in Review meeting/)).toBeTruthy();
+  fireEvent.click(create);
+  expect(request).toHaveBeenCalledTimes(1);
+
+  vi.mocked(request).mockResolvedValue({ ...empty, revision: 4, ai: regenerated, acceptedAI: regenerated });
+  fireEvent.click(screen.getByRole("button", { name: "Reload saved Security review" }));
+  await waitFor(() => expect(create.disabled).toBe(false));
 });
 
 it("does not fetch Security records for a user without reviewer access", () => {

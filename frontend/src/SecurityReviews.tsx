@@ -47,20 +47,46 @@ type ReviewState = {
 const emptyHuman: Human = { risk: "", decision: "", assessment: "", rationale: "", conditions: "", reportId: null };
 const decisions = ["Approved", "Conditional approval", "On hold", "Rejected"];
 
+const assessmentMaxLength = 40000;
+const reviewSections = [
+  ["Requirement", "2. Security requirements and constraints"],
+  ["Reported control", "3. Reported controls"],
+  ["Open risk", "4. Open risks and verification gaps"],
+  ["Follow-up", "5. Follow-up questions and actions"],
+];
+
+function formatAssessment(review: AIReview): string {
+  const sections = reviewSections.flatMap(([kind, title]) => {
+    const findings = review.findings.filter(finding => finding.kind === kind);
+    return [title, ...(findings.length ? findings.map(finding => {
+      const source = review.sources[finding.transcript - 1];
+      const citation = `${source?.fileName ?? `Transcript ${finding.transcript}`}, line ${finding.line}`;
+      return [finding.text, citation, finding.excerpt].filter(Boolean).join("\n");
+    }) : ["None recorded."])];
+  });
+  return [
+    "Consolidated Security meeting review",
+    `Review template: ${review.templateVersion ?? "1.0 (saved legacy review)"}`,
+    "1. Project understanding",
+    review.summary,
+    ...sections,
+    "6. Review readiness",
+    review.readiness ?? "Readiness was not captured in this version.",
+    review.readinessReason,
+    "Readiness is advisory. The Security reviewer records the final decision.",
+    "7. Evidence references",
+    review.sources.map((source, index) => `${index + 1}. ${source.fileName}`).join("\n") || "None recorded.",
+  ].filter(Boolean).join("\n\n");
+}
+
 function AIReader({ review, downloadSource, busy }: { review: Version<AIReview>; downloadSource: (number: number, name: string) => void; busy: boolean }) {
-  const sections = [
-    ["Requirement", "2. Security requirements and constraints"],
-    ["Reported control", "3. Reported controls"],
-    ["Open risk", "4. Open risks and verification gaps"],
-    ["Follow-up", "5. Follow-up questions and actions"],
-  ];
   return <article className="ea-review-reader" aria-label="Read-only Security AI review">
     <p className="ea-review-legend">Red highlights open risks and verification gaps. Reported controls reflect stakeholder statements.</p>
     <h3>Consolidated Security meeting review</h3>
     <p>Review template {review.data.templateVersion ?? "1.0 (saved legacy review)"}</p>
     <h4>1. Project understanding</h4>
     <p className="security-preserve-text">{review.data.summary}</p>
-    {sections.map(([kind, title]) => {
+    {reviewSections.map(([kind, title]) => {
       const findings = review.data.findings.filter(finding => finding.kind === kind);
       return <section key={kind}>
         <h3>{title}</h3>
@@ -83,12 +109,11 @@ function AIReader({ review, downloadSource, busy }: { review: Version<AIReview>;
   </article>;
 }
 
-export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerate, openReview }:{
+export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerate }:{
   demandId: string;
   canEdit: boolean;
   mode: "ai" | "human";
   beforeGenerate?: () => Promise<void>;
-  openReview?: () => void;
 }) {
   const base = `/api/projects/${encodeURIComponent(demandId)}/security-reviews`;
   const [reviewRevision, setReviewRevision] = useState<number | null>(null);
@@ -115,7 +140,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
     if (hydrate) {
       const saved = value.human?.data ?? emptyHuman;
       setDraft({ risk: saved.risk, decision: saved.decision, rationale: saved.rationale,
-        assessment: saved.assessment ?? (value.human ? "" : value.acceptedAI?.data.summary ?? ""),
+        assessment: saved.assessment ?? "",
         conditions: saved.conditions, reportId: saved.reportId });
     }
   }, [base]);
@@ -145,7 +170,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
     }
   }
 
-  function mutate(path: string, body: object, method = "POST") {
+  function mutate(path: string, body: object, method = "POST", editAfterSave = false) {
     if (!state) return;
     void run(async signal => {
       if (path === "/generate") await beforeGenerate?.();
@@ -155,7 +180,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
       await load(signal);
       if (signal.aborted) return;
       if (path === "/generate") setReviewRevision(null);
-      if (path === "/human" || path === "/human/submit") setEditing(false);
+      if (path === "/human" || path === "/human/submit") setEditing(editAfterSave);
       if (path === "/human/reopen") {
         setReason("");
         setEditing(true);
@@ -195,7 +220,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
       await load(signal, false);
       if (!signal.aborted) {
         setDraft(current => ({ ...current, reportId: report.id }));
-        setEditing(true);
+        setEditing(Boolean(state?.human));
         reportAttempt.current = null;
       }
     });
@@ -246,7 +271,15 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
   const visibleReview = reviewVersions.find(item => item.revision === reviewRevision) ?? reviewVersions[reviewVersions.length - 1];
   const submitted = state?.human?.kind === "Submitted";
   const source = submitted ? state?.humanAI ?? state?.acceptedAI : state?.acceptedAI;
+  const acceptedSource = state?.acceptedAI;
+  const latestAIIsAccepted = Boolean(acceptedSource && state?.ai?.revision === acceptedSource.revision);
   const saved = state?.human?.data;
+
+  function createHumanReview() {
+    if (!acceptedSource || !latestAIIsAccepted || state?.human || busy) return;
+    mutate("/human", { ...emptyHuman, assessment: formatAssessment(acceptedSource.data), reportId: draft.reportId }, "PUT", true);
+  }
+
   const draftMatches = saved && (Object.keys(emptyHuman) as (keyof Human)[]).every(key => draft[key] === (key === "assessment" ? saved.assessment ?? "" : saved[key]));
   const currentSource = state?.human?.sourceRevision === state?.acceptedAI?.revision;
   const selected = (state?.transcripts ?? []).filter(file => file.kind === "Transcript" && !excluded.includes(file.id));
@@ -260,17 +293,20 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
         <h2>{mode === "ai" ? "Security AI review" : "Human Security final review"}</h2>
         {mode === "human" && <p>Your assessment, decision and supporting evidence.</p>}
       </div>
-      {mode === "human" && state?.human && <Badge appearance="tint" color={submitted ? "success" : "informative"}>
-        {state.human.kind} · Version {state.human.revision}
+      {mode === "human" && state && <Badge appearance="tint" color={submitted ? "success" : "warning"}>
+        {state.human ? `${state.human.kind} · Version ${state.human.revision}` : "No human review"}
       </Badge>}
     </div>
     <div className="workspace-panel-body">
       {!canEdit && <p>Security review access is limited to assigned Security reviewers and Admins.</p>}
       {canEdit && <>
         {error && <p role="alert">{error}</p>}
+        {mode === "human" && !state?.human && <p className="workspace-secondary">
+          Start from the accepted meeting review, refine your assessment, then record your Security decision.
+        </p>}
+        {!state && !error && <p role="status">Loading saved Security review…</p>}
         <div className="ea-final-utility">
-          <Button appearance="primary" disabled={busy || editing} onClick={() => void run(signal => load(signal))}>Reload saved Security review</Button>
-          {mode === "human" && state?.acceptedAI && openReview && <Button appearance="primary" disabled={busy || editing} onClick={openReview}>Open review meeting</Button>}
+          <Button appearance={mode === "human" ? "subtle" : "primary"} disabled={busy || editing} onClick={() => void run(signal => load(signal))}>Reload saved Security review</Button>
         </div>
         {busy && <div role="status" className="ea-review-feedback ea-review-feedback--progress"><strong>{operation}</strong></div>}
         {mode === "ai" && state && <>
@@ -373,16 +409,26 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
           </Dialog>
         </>}
         {mode === "human" && state && <>
-          <p>Record the human Security decision and attach the team’s closing report when available. The existing Security system remains the official record.</p>
-          {!state.acceptedAI && <p>Accept a Security AI review before saving the human assessment.{" "}
-            <Button appearance="primary" onClick={openReview}>Open review meeting</Button></p>}
-          {source && <details className="ea-final-source"><summary>AI review source · Version {source.version ?? source.revision} <span className="ea-final-source-hint">Read-only reference</span></summary>
-            {reader(source)}</details>}
+          <details className="ea-final-source" aria-label="Security AI review source" open={!state.human}>
+            <summary>AI review source <span className="ea-final-source-hint">Read-only reference</span></summary>
+            {source ? <>
+              <p>Accepted AI review · Version {source.version ?? source.revision}</p>
+              <details>
+                <summary>Read AI source review (read-only)</summary>
+                {reader(source)}
+              </details>
+            </> : <p>Accept a Security AI review in Review meeting before creating the human assessment draft.</p>}
+            {!state.human && acceptedSource && !latestAIIsAccepted && <p>
+              Accept the latest Security AI draft in Review meeting before creating the human assessment draft.
+            </p>}
+            {!state.human && <Button appearance="primary" disabled={busy || !latestAIIsAccepted}
+              onClick={createHumanReview}>Create human final review from AI review</Button>}
+          </details>
           {state.human && !submitted && !currentSource && <p role="status">The accepted AI source changed. Review it before saving a new draft.</p>}
           {submitted ? <p role="status">Security decision submitted.</p> :
-            <p>To submit, save the risk classification, decision and rationale. Conditional approval also requires conditions.</p>}
-          {state.acceptedAI && <section className="ea-final-draft">
-            <h3>{submitted ? "Submitted human final review" : "Human Security review draft"}</h3>
+            state.human && <p>To submit, save the risk classification, decision and rationale. Conditional approval also requires conditions.</p>}
+          {state.human && <section className="ea-final-draft">
+            <h3>{submitted ? "Submitted human final review" : "Editable human final review"}</h3>
             <div className="ea-final-summary">
               <div><span>Security decision</span><strong>{draft.decision || "Not selected"}</strong></div>
               <div><span>Security risk</span><strong>{draft.risk || "Not selected"}</strong></div>
@@ -390,7 +436,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
                 {state.human ? new Date(state.human.createdAt).toLocaleString() : "Unsaved"}</strong></div>
             </div>
             {!submitted && !editing && <div className="ea-final-mode">
-              <Button appearance="primary" disabled={busy} onClick={() => setEditing(true)}>Edit human review</Button>
+              <Button appearance="primary" disabled={busy || !acceptedSource} onClick={() => setEditing(true)}>Edit human review</Button>
               <Button appearance="primary" disabled={!canSubmit} onClick={() => mutate("/human/submit", draft)}>Submit Security decision</Button>
             </div>}
             {!editing && <section className="ea-final-report">
@@ -400,11 +446,14 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
               <section><h3>Closing report</h3><p>{state.reports.find(report => report.id === draft.reportId)?.data.fileName ?? "None selected"}</p></section>
             </section>}
           </section>}
-          {editing && !submitted && state.acceptedAI && <fieldset className="ea-final-fields" disabled={busy}>
-            <legend>Reviewer decision</legend>
+          {editing && !submitted && state.human && state.acceptedAI && <fieldset className="ea-final-fields" disabled={busy}>
+            <legend>Human Security final review</legend>
+            <h3 className="ea-final-step">1. Security assessment</h3>
+            <p className="workspace-secondary">Refine the review below or keep it unchanged. Save your draft before submitting.</p>
             <label className="session-field">Final Security assessment text
-              <Textarea rows={8} resize="vertical" value={draft.assessment} maxLength={16000} onChange={(_, data) => setDraft({ ...draft, assessment: data.value })} />
+              <Textarea rows={14} resize="vertical" value={draft.assessment} maxLength={assessmentMaxLength} onChange={(_, data) => setDraft({ ...draft, assessment: data.value })} />
             </label>
+            <h3 className="ea-final-step">2. Human Security decision</h3>
             <label className="session-field">Security risk classification
               <Select value={draft.risk} onChange={(_, data) => setDraft({ ...draft, risk: data.value })}>
                 <option value="">Select risk</option>
@@ -444,6 +493,7 @@ export default function SecurityReviews({ demandId, canEdit, mode, beforeGenerat
             <Button appearance="primary" disabled={busy || !reason.trim()} onClick={() => mutate("/human/reopen", { reason })}>Reopen Security review</Button>
           </>}
           <h3>Closing reports</h3>
+          <p className="workspace-secondary">Attach the Security team’s closing report when available. The existing Security system remains the official record.</p>
           <input type="file" accept=".pdf" hidden ref={reportInput} disabled={busy} onChange={event => {
             const file = event.currentTarget.files?.[0];
             event.currentTarget.value = "";

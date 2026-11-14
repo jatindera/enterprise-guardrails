@@ -41,7 +41,7 @@ class AIReview(APIModel):
 class HumanDraft(Revision):
     risk: Literal['', 'Low', 'Medium', 'High'] = ''
     decision: Literal['', 'Approved', 'Conditional approval', 'On hold', 'Rejected'] = ''
-    assessment: str = Field(default='', max_length=16000)
+    assessment: str = Field(default='', max_length=40000)
     rationale: str = Field(default='', max_length=6000)
     conditions: str = Field(default='', max_length=6000)
     report_id: UUID | None = None

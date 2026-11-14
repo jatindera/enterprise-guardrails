@@ -639,8 +639,16 @@ export default function ReviewSession({
       {assessmentTab && (
         <div hidden={phase !== "Assessment"}>
           {preparationDomain === "Security" ? phase === "Assessment" &&
-            <SecurityReviews demandId={project.demandId} canEdit={canPrepare} mode="human"
-              openReview={() => setPhase("Review meeting")} /> :
+            <section>
+              <div className="session-heading">
+                <div>
+                  <h2>Security assessment</h2>
+                  <p>Demand #{project.demandId} · Assigned Security reviewer: {project.assignedSecurity || "Not assigned"}</p>
+                </div>
+                <Button appearance="primary" onClick={() => setPhase("Review meeting")}>Open review meeting</Button>
+              </div>
+              <SecurityReviews demandId={project.demandId} canEdit={canPrepare} mode="human" />
+            </section> :
             assessmentTab.render(() => setPhase("Review meeting"))}
         </div>
       )}
