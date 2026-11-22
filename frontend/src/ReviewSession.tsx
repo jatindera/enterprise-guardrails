@@ -83,7 +83,6 @@ export default function ReviewSession({
 }: ReviewSessionProps) {
   const access = preparationAccess(useAuth().roles);
   const preparationScope = preparationDomain;
-  const assistantConnected = preparationDomain === "EA" || preparationDomain === "Security";
   const roleCanPrepare = canEditPreparationFocus(access, preparationDomain) && (canEditOverride ?? true);
   const [phase, setPhase] = useState<MeetingPhase>("Prepare");
 
@@ -371,7 +370,7 @@ export default function ReviewSession({
               <h2>Preparation AI assistant</h2>
 
               <Badge appearance="tint" color="warning">
-                {assistantConnected ? "AI connected" : "AI connection pending"}
+                AI connected
               </Badge>
             </div>
 
@@ -413,7 +412,7 @@ export default function ReviewSession({
                 onAddQuestion={addQuestionFromChat}
                 disabled={!canPrepare}
                 scope={preparationScope}
-                connected={assistantConnected}
+                connected
                 allowedFocuses={canPrepare ? [preparationScope] : []}
               />
             </div>
@@ -579,8 +578,8 @@ export default function ReviewSession({
             <div className="panel-heading">
               <h2>Meeting Assistant</h2>
 
-              <Badge appearance="tint" color={assistantConnected ? "informative" : "warning"}>
-                {assistantConnected ? "AI connected" : "AI connection pending"}
+              <Badge appearance="tint" color="informative">
+                AI connected
               </Badge>
             </div>
 
@@ -596,14 +595,13 @@ export default function ReviewSession({
                 onMessagesChange={setMeetingChatMessages}
                 onDraftChange={setMeetingChatDraft}
                 onAddQuestion={addMeetingQuestionFromChat}
-                connected={assistantConnected}
+                connected
                 chatMode="meeting"
                 beforeSend={persistence.flush}
                 allowedFocuses={[preparationDomain]}
                 welcomeTitle="Your review assistant"
                 inputLabel="Ask the meeting assistant"
                 emptyMessage="Ask for help with a stakeholder answer or request a follow-up question."
-                footerText="Demo replies use the message you send. Automatic analysis of captured answers and conversation history awaits Foundry integration. Added questions appear under Additional questions."
               />
 
 

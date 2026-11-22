@@ -2,6 +2,7 @@ from typing import Literal
 from datetime import datetime
 from pydantic import Field, model_validator
 from app.core.api_model import APIModel
+from app.core.policy_citation import PolicyCitation
 
 Domain = Literal['EA', 'Security', 'RAI']
 
@@ -14,6 +15,7 @@ class Question(APIModel):
     priority: Literal['Essential', 'Follow-up']
     source: Literal['manual', 'ai'] = 'manual'
     selected: bool = False
+    policy_sources: list[PolicyCitation] = Field(default_factory=list, max_length=6)
 
 
 class MeetingDraft(APIModel):

@@ -47,7 +47,7 @@ def view(session, record, domain, can_edit):
         MeetingPreparedQuestion.preparation_id == record.id).order_by(MeetingPreparedQuestion.position)))
     def question(row):
         return Question(id=row.id, focus=domain, question=row.question, reason=row.reason,
-            priority=row.priority, source=row.source, selected=row.selected)
+            priority=row.priority, source=row.source, selected=row.selected, policy_sources=row.policy_sources or [])
     def asked_time(row):
         value = row.asked_at
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
@@ -103,6 +103,7 @@ def save_meeting(demand_id: DemandId, domain: Domain, data: SaveMeeting, session
                 row.position = position
                 row.question, row.reason, row.priority = q.question, q.reason, q.priority
                 row.source, row.selected = q.source, q.selected
+                row.policy_sources = [citation.model_dump() for citation in q.policy_sources] or None
                 if q.id in data.asked_question_ids and row.asked_at is None:
                     row.asked_at = now
                     row.asked_order = asked_order[q.id]

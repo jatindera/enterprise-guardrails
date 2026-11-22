@@ -6,8 +6,9 @@ import {
 } from "@fluentui/react-components";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { type EAWebSource, chatWithEA } from "./api/projects";
+import { type EAWebSource, type PolicyCitation, chatWithEA } from "./api/projects";
 import "./PreparationChat.css";
+import PolicySources from "./PolicySources";
 
 import type { PreparationScope } from "./auth/preparationAccess";
 import type { Project } from "./types";
@@ -23,6 +24,8 @@ export interface PreparationChatMessage {
   proposedQuestion?: PreparedQuestion;
   sources?: EAWebSource[];
   webSearched?: boolean;
+  policySources?: PolicyCitation[];
+  policyMatches?: boolean;
   searchedAt?: string | null;
 }
 
@@ -162,7 +165,7 @@ export default function PreparationChat({
   "Chat is held locally while the workspace remains open. Only questions you explicitly add enter the meeting question list.",
 }: PreparationChatProps) {
   const inputId = useId();
-  const assistantDomain = scope === "Security" ? "Security" : "EA";
+  const assistantDomain = scope === "All" ? "EA" : scope;
   const [searchWeb, setSearchWeb] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -201,6 +204,7 @@ export default function PreparationChat({
           searchWeb ? { searchWeb: true } : undefined, chatMode, assistantDomain);
         if (controller.signal.aborted) return;
         reply = { id: crypto.randomUUID(), role: "assistant", text: result.text,
+          policySources: result.policySources, policyMatches: result.policyMatches,
           sources: result.sources, webSearched: result.webSearched, searchedAt: result.searchedAt,
           proposedQuestion: result.proposedQuestion ? { ...result.proposedQuestion,
             id: crypto.randomUUID(), focus: assistantDomain, selected: false, source: "ai" } : undefined };
@@ -244,6 +248,8 @@ export default function PreparationChat({
               <div className={`eg-chat-bubble eg-chat-bubble--${message.role}`}>
                 <strong>{message.role === "user" ? "You" : connected ? `${assistantDomain} assistant` : "Assistant · sample reply"}</strong>
                 <p className="eg-chat-text">{message.text}</p>
+                <PolicySources sources={message.policySources} />
+                {message.policyMatches === false && <p>No reference matches found. This reply uses general RAI guidance.</p>}
                 {message.webSearched && (
                   <div className="eg-chat-web-sources">
                     <Badge appearance="tint">Web searched</Badge>
@@ -261,6 +267,7 @@ export default function PreparationChat({
                   <div className="eg-chat-proposal">
                     <Badge appearance="tint">{proposedQuestion.focus}</Badge>
                     <p>{proposedQuestion.question}</p>
+                    <PolicySources sources={proposedQuestion.policySources} />
                     <Button appearance="primary"
                       disabled={disabled || alreadyAdded || !allowedFocuses.includes(proposedQuestion.focus)}
                       onClick={() => {

@@ -404,15 +404,32 @@ export function submitProductionDeployment(demandId: string, productionStatus: "
 }
 
 
+export interface PolicyCitation {
+  title: string;
+  chunkId?: string | null;
+  policyId?: string | null;
+  version?: string | null;
+  location?: string | null;
+  url?: string | null;
+}
+
+const preparationRoutes = {
+  EA: "ea-preparation",
+  Security: "security-preparation",
+  RAI: "rai-preparation",
+};
+type PreparationDomain = keyof typeof preparationRoutes;
+
 export interface EAQuestionDraft {
   question: string;
   reason: string;
   priority: "Essential" | "Follow-up";
+  policySources?: PolicyCitation[];
 }
 
-export function generateEAQuestions(demandId: string, signal?: AbortSignal, domain: "EA" | "Security" = "EA") {
-  const preparation = domain === "Security" ? "security-preparation" : "ea-preparation";
-  return request<{ questions: EAQuestionDraft[] }>(
+export function generateEAQuestions(demandId: string, signal?: AbortSignal, domain: PreparationDomain = "EA") {
+  const preparation = preparationRoutes[domain];
+  return request<{ questions: EAQuestionDraft[]; policyMatches?: boolean }>(
     `/api/projects/${encodeURIComponent(demandId)}/${preparation}/questions`,
     { method: "POST", signal }, "json", 240000,
   );
@@ -422,10 +439,10 @@ export interface EAWebSource { title: string; url: string }
 
 export function chatWithEA(demandId: string, message: string,
   history: { role: "user" | "assistant"; text: string }[], signal?: AbortSignal,
-  web?: { searchWeb: true }, mode: "prepare" | "meeting" = "prepare", domain: "EA" | "Security" = "EA") {
-  const preparation = domain === "Security" ? "security-preparation" : "ea-preparation";
+  web?: { searchWeb: true }, mode: "prepare" | "meeting" = "prepare", domain: PreparationDomain = "EA") {
+  const preparation = preparationRoutes[domain];
   return request<{ text: string; proposedQuestion: EAQuestionDraft | null;
-    sources?: EAWebSource[]; webSearched?: boolean; searchedAt?: string | null }>(
+    sources?: EAWebSource[]; policySources?: PolicyCitation[]; policyMatches?: boolean; webSearched?: boolean; searchedAt?: string | null }>(
     `/api/projects/${encodeURIComponent(demandId)}/${preparation}/${mode === "meeting" ? "meeting-chat" : "chat"}`,
     { method: "POST", body: JSON.stringify({ message, history, ...web }), signal }, "json", 240000,
   );

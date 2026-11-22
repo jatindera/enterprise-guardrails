@@ -12,6 +12,7 @@ from sqlalchemy import (
     BigInteger,
     Unicode,
     UnicodeText,
+    JSON,
     Uuid,
 )
 from sqlalchemy.dialects.mssql import DATETIMEOFFSET
@@ -375,6 +376,7 @@ class MeetingPreparedQuestion(Base):
     priority: Mapped[str] = mapped_column(Unicode(16), nullable=False)
     source: Mapped[str] = mapped_column(Unicode(16), nullable=False)
     selected: Mapped[bool] = mapped_column(nullable=False)
+    policy_sources: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     asked_at: Mapped[datetime | None] = mapped_column(DATETIMEOFFSET, nullable=True)
     asked_order: Mapped[int | None] = mapped_column(nullable=True)
 

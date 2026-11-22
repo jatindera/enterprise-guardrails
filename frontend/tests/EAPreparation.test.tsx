@@ -5,7 +5,7 @@ import MeetingPreparation from "../src/MeetingPreparation";
 import PreparationChat from "../src/PreparationChat";
 import type { Project } from "../src/types";
 const mocks = vi.hoisted(() => ({ generate: vi.fn(), chat: vi.fn() }));
-vi.mock("../src/auth/AuthGate", () => ({ useAuth: () => ({ roles: ["enterprise-architect", "security-engineer"] }) }));
+vi.mock("../src/auth/AuthGate", () => ({ useAuth: () => ({ roles: ["enterprise-architect", "security-engineer", "rai-manager"] }) }));
 vi.mock("../src/api/projects", () => ({ generateEAQuestions: mocks.generate, chatWithEA: mocks.chat }));
 const project = { demandId: "3845", name: "Example", businessFunction: "IT" } as Project;
 const question = { question: "Which integrations are needed?", reason: "Confirm scope.", priority: "Essential" };
@@ -180,4 +180,38 @@ it.each([
   }
   expect(screen.queryByText(status)).toBeNull();
   expect((screen.getByRole("button", { name: button }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+const policy = { title: "Responsible_AI_Application_Review_Questions.md", chunkId: "chunk1" };
+
+it("labels only RAI questions with policy citations", async () => {
+  const change = vi.fn();
+  const props = { project, questions: [], onQuestionsChange: change, scope: "RAI" as const };
+  mocks.generate.mockResolvedValue({ policyMatches: true, questions: [
+    { ...question, policySources: [policy] }, { ...question, question: "Who reviews risks?" },
+  ] });
+  const view = render(<MeetingPreparation {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Prepare questions with AI" }));
+  await waitFor(() => expect(change).toHaveBeenCalledOnce());
+  expect(mocks.generate).toHaveBeenCalledWith("3845", expect.any(AbortSignal), "RAI");
+  view.rerender(<MeetingPreparation {...props} questions={change.mock.calls[0][0]} />);
+  expect(screen.getAllByText("AI Search")).toHaveLength(1);
+  expect(screen.getByText("Responsible_AI_Application_Review_Questions.md")).toBeTruthy();
+});
+
+it("routes RAI chat to the RAI assistant and carries citations into proposed questions", async () => {
+  const change = vi.fn();
+  const add = vi.fn();
+  const props = { project, messages: [], draft: "What oversight is needed?", questions: [],
+    onMessagesChange: change, onDraftChange: vi.fn(), onAddQuestion: add, scope: "RAI" as const, connected: true };
+  mocks.chat.mockResolvedValue({ text: "Confirm oversight.", policySources: [policy],
+    proposedQuestion: { ...question, policySources: [policy] } });
+  const view = render(<PreparationChat {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(change).toHaveBeenCalledOnce());
+  expect(mocks.chat.mock.calls[0][6]).toBe("RAI");
+  view.rerender(<PreparationChat {...props} messages={change.mock.calls[0][0]} />);
+  expect(screen.getAllByText("AI Search")).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "Add to meeting questions" }));
+  expect(add).toHaveBeenCalledWith(expect.objectContaining({ focus: "RAI", policySources: [policy] }));
 });
